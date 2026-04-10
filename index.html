@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SlidePy — Presentations with Python</title>
+  <link
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@700;800&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css">
+
+  <!-- Main Style -->
+  <link rel="stylesheet" href="css/style.css">
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
+
+  <style>
+    /* Resizing Highlights */
+    #slideCanvas.resizing-mode .slide-element-free {
+      outline: 2px dashed rgba(255, 255, 255, 0.6);
+      outline-offset: -2px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- Loading Screen -->
+  <div id="loadingScreen" class="loading-screen">
+    <div class="loading-content">
+      <div class="loading-logo">Sp</div>
+      <h1 class="loading-title">SlidePy</h1>
+      <p class="loading-subtitle">Initializing Python environment...</p>
+      <div class="loading-bar"><div class="loading-bar-fill"></div></div>
+    </div>
+  </div>
+
+  <!-- Home Screen -->
+  <div id="homeScreen" class="home-screen" style="display:none">
+    <div class="home-header">
+      <div class="loading-logo" style="margin:0 16px 0 0">Sp</div>
+      <h1 class="home-title">SlidePy</h1>
+    </div>
+    <p class="home-desc">Your presentations, powered by Python.</p>
+    <div class="home-grid" id="homeGrid"></div>
+  </div>
+
+  <!-- Wizard Modal -->
+  <div id="wizardModal" class="wizard-overlay" style="display:none">
+    <div class="wizard-box">
+      <!-- Step 1: Name -->
+      <div class="wizard-step active" id="wizardStep1">
+        <h2 class="wizard-heading">New Presentation</h2>
+        <p class="wizard-label">Give your presentation a name</p>
+        <input class="wizard-input" id="wizardName" type="text" placeholder="My Presentation" autocomplete="off">
+        <div class="wizard-actions">
+          <button class="wizard-btn secondary" onclick="closeWizard()">Cancel</button>
+          <button class="wizard-btn primary" onclick="wizardNext1()">Next →</button>
+        </div>
+      </div>
+      <!-- Step 2: Package Profile -->
+      <div class="wizard-step" id="wizardStep2">
+        <h2 class="wizard-heading">Python Packages</h2>
+        <p class="wizard-label">Choose which packages to install</p>
+        <div class="wizard-profiles">
+          <button class="wizard-profile-btn" data-profile="none" onclick="wizardSelectProfile('none')">
+            <div class="wizard-profile-icon">∅</div>
+            <div class="wizard-profile-name">None</div>
+            <div class="wizard-profile-desc">No packages</div>
+          </button>
+          <button class="wizard-profile-btn selected" data-profile="default" onclick="wizardSelectProfile('default')">
+            <div class="wizard-profile-icon">⚡</div>
+            <div class="wizard-profile-name">Default</div>
+            <div class="wizard-profile-desc">numpy, matplotlib</div>
+          </button>
+          <button class="wizard-profile-btn" data-profile="custom" onclick="wizardSelectProfile('custom')">
+            <div class="wizard-profile-icon">⚙</div>
+            <div class="wizard-profile-name">Custom</div>
+            <div class="wizard-profile-desc">Choose packages</div>
+          </button>
+        </div>
+        <div class="wizard-actions">
+          <button class="wizard-btn secondary" onclick="showWizardStep(1)">← Back</button>
+          <button class="wizard-btn primary" onclick="wizardNext2()">Continue →</button>
+        </div>
+      </div>
+      <!-- Step 3: Custom Package Selection -->
+      <div class="wizard-step" id="wizardStep3">
+        <h2 class="wizard-heading">Select Packages</h2>
+        <input class="wizard-input" id="wizardPkgSearch" type="text" placeholder="Search packages..." oninput="renderPackageList()" autocomplete="off">
+        <div class="wizard-pkg-list" id="wizardPkgList"></div>
+        <div class="wizard-actions">
+          <button class="wizard-btn secondary" onclick="showWizardStep(2)">← Back</button>
+          <button class="wizard-btn primary" onclick="wizardNext3()">Set Aliases →</button>
+        </div>
+      </div>
+      <!-- Step 4: Alias Assignment -->
+      <div class="wizard-step" id="wizardStep4">
+        <h2 class="wizard-heading">Package Aliases</h2>
+        <p class="wizard-label">Assign import aliases (optional)</p>
+        <div class="wizard-alias-list" id="wizardAliasList"></div>
+        <div class="wizard-actions">
+          <button class="wizard-btn secondary" onclick="showWizardStep(3)">← Back</button>
+          <button class="wizard-btn primary" onclick="wizardFinish()">Create Presentation →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="logo-icon">Sp</div>
+      <span class="logo">SlidePy</span>
+      <input class="pres-title" id="presTitle" value="Untitled Presentation" spellcheck="false">
+    </div>
+    <div class="topbar-center">
+      <button class="tb-btn" onclick="undo()">↩ Undo</button>
+      <button class="tb-btn" onclick="redo()">↪ Redo</button>
+      <div class="tb-sep"></div>
+      <button class="tb-btn" onclick="openUploadModal()">📦 Upload .py</button>
+      <div class="tb-sep"></div>
+      <button class="tb-btn" onclick="exportJSON()">💾 Save</button>
+      <button class="tb-btn" onclick="triggerLoad()">📂 Load</button>
+      <input type="file" id="loadInput" accept=".json" style="display:none" onchange="importJSON(event)">
+    </div>
+    <div class="topbar-right">
+      <button class="btn-share" onclick="openShareModal()">🔗 Share</button>
+      <button class="btn-present" onclick="startPresentation()">▶ Present</button>
+    </div>
+  </div>
+
+  <div class="main-layout">
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <span>Slides</span>
+        <div class="sidebar-actions">
+          <button onclick="addSlide('blank')" title="Blank slide">+</button>
+          <button onclick="addSlide('title')" title="Title slide">T</button>
+          <button onclick="addSlide('jupyter')" title="Python slide">🐍</button>
+        </div>
+      </div>
+      <div class="slide-list" id="slideList"></div>
+    </div>
+    <div class="editor-area">
+      <div class="editor-toolbar">
+        <div class="et-group">
+          <button class="et-btn" onclick="addElement('title')">+ Title</button>
+          <button class="et-btn" onclick="addElement('subtitle')">+ Subtitle</button>
+          <button class="et-btn" onclick="addElement('body')">+ Text</button>
+          <button class="et-btn" onclick="addElement('image')">+ Image</button>
+        </div>
+        <div class="et-sep"></div>
+        <div class="et-group">
+          <button class="et-btn" onclick="addElement('jupyter')" style="color:var(--green)">🐍 + Python Cell</button>
+        </div>
+        <div class="et-sep"></div>
+        <div class="et-group">
+          <select class="et-select" id="bgSelect" onchange="changeBg(this.value)">
+            <option value="#1c1c26">Dark (default)</option>
+            <option value="#0e0e12">Pitch Black</option>
+            <option value="#1a1a2e">Deep Navy</option>
+            <option value="#1e1e2e">Catppuccin</option>
+            <option value="#fafaf9">Light</option>
+            <option value="#fffbeb">Warm White</option>
+            <option value="#0f172a">Slate</option>
+          </select>
+        </div>
+      </div>
+      <div class="slide-canvas-wrapper" id="canvasWrapper">
+        <div class="slide-canvas" id="slideCanvas" onmousedown="onCanvasMouseDown(event)"></div>
+        <div class="present-nav" style="display:none" id="presentNav">
+          <button onclick="presentPrev()">← Prev</button>
+          <span class="slide-counter" id="presentCounter"></span>
+          <button onclick="presentNext()">Next →</button>
+          <button onclick="stopPresentation()">✕ Exit</button>
+        </div>
+      </div>
+      <div class="slide-bottom-bar">
+        <span class="slide-counter" id="slideCounter">Slide 1 of 1</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="context-menu" id="ctxMenu">
+    <button class="ctx-item" onclick="ctxAction('duplicate')">📋 Duplicate Slide</button>
+    <button class="ctx-item" onclick="ctxAction('hide')">👁 Toggle Hidden</button>
+    <div class="ctx-sep"></div>
+    <button class="ctx-item" onclick="ctxAction('moveUp')">⬆ Move Up</button>
+    <button class="ctx-item" onclick="ctxAction('moveDown')">⬇ Move Down</button>
+    <div class="ctx-sep"></div>
+    <button class="ctx-item danger" onclick="ctxAction('delete')">🗑 Delete Slide</button>
+  </div>
+
+  <div class="modal-overlay" id="shareModal">
+    <div class="modal">
+      <h2>Share Presentation</h2>
+      <p>Copy this collaboration link to invite others.</p>
+      <input class="modal-input" id="shareLink" readonly>
+      <div style="display:flex;gap:12px;margin-bottom:14px">
+        <label
+          style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-secondary);cursor:pointer"><input
+            type="radio" name="shareMode" value="view" checked> View only</label>
+        <label
+          style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-secondary);cursor:pointer"><input
+            type="radio" name="shareMode" value="edit"> Can edit</label>
+      </div>
+      <div class="modal-btns">
+        <button class="modal-btn" onclick="closeModal('shareModal')">Close</button>
+        <button class="modal-btn primary" onclick="copyShareLink()">📋 Copy Link</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="uploadModal">
+    <div class="modal">
+      <h2>Upload Python Files</h2>
+      <p>Upload .py files to make them importable in your cells.</p>
+      <div class="upload-zone" id="uploadZone" onclick="document.getElementById('pyFileInput').click()">📁 Click or drag
+        .py files here</div>
+      <input type="file" id="pyFileInput" accept=".py" multiple style="display:none" onchange="handlePyUpload(event)">
+      <div class="uploaded-files-list" id="uploadedFilesList"></div>
+      <div class="modal-btns" style="margin-top:14px">
+        <button class="modal-btn" onclick="closeModal('uploadModal')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="pyodide-status" id="pyStatus">
+    <div class="dot"></div><span id="pyStatusText">Loading Python...</span>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <div class="color-palette-widget" id="globalPalette">
+    <div class="cp-swatches">
+      <div class="cp-swatch" style="background:#7c6cf0" onmousedown="event.preventDefault()"
+        onclick="applyPaletteColor('#7c6cf0')"></div>
+      <div class="cp-swatch" style="background:#9d8fff" onmousedown="event.preventDefault()"
+        onclick="applyPaletteColor('#9d8fff')"></div>
+      <div class="cp-swatch" style="background:#1e3a8a" onmousedown="event.preventDefault()"
+        onclick="applyPaletteColor('#1e3a8a')" title="Dark Blue"></div>
+      <div class="cp-swatch" style="background:#4ade80" onmousedown="event.preventDefault()"
+        onclick="applyPaletteColor('#4ade80')"></div>
+      <div class="cp-swatch" style="background:#15803d" onmousedown="event.preventDefault()"
+        onclick="applyPaletteColor('#15803d')" title="Dark Green"></div>
+      <div class="cp-swatch" style="background:#f87171" onmousedown="event.preventDefault()"
+        onclick="applyPaletteColor('#f87171')"></div>
+      <div class="cp-swatch" style="background:#b91c1c" onmousedown="event.preventDefault()"
+        onclick="applyPaletteColor('#b91c1c')" title="Dark Red"></div>
+      <div class="cp-swatch" style="background:#fb923c" onmousedown="event.preventDefault()"
+        onclick="applyPaletteColor('#fb923c')"></div>
+      <div class="cp-swatch" style="background:#facc15" onmousedown="event.preventDefault()"
+        onclick="applyPaletteColor('#facc15')"></div>
+      <div class="cp-swatch" style="background:#a16207" onmousedown="event.preventDefault()"
+        onclick="applyPaletteColor('#a16207')" title="Dark Gold"></div>
+      <div class="cp-swatch" style="background:#22d3ee" onmousedown="event.preventDefault()"
+        onclick="applyPaletteColor('#22d3ee')"></div>
+      <div class="cp-swatch" style="background:#0f766e" onmousedown="event.preventDefault()"
+        onclick="applyPaletteColor('#0f766e')" title="Dark Teal"></div>
+      <div class="cp-swatch" style="background:#c026d3" onmousedown="event.preventDefault()"
+        onclick="applyPaletteColor('#c026d3')" title="Fuchsia"></div>
+      <div class="cp-swatch" style="background:#e8e6f0" onmousedown="event.preventDefault()"
+        onclick="applyPaletteColor('#e8e6f0')"></div>
+      <div class="cp-swatch" style="background:#16161d" onmousedown="event.preventDefault()"
+        onclick="applyPaletteColor('#16161d')"></div>
+      <div class="cp-swatch" style="background:transparent; border:1px solid #f87171;"
+        onmousedown="event.preventDefault()" onclick="applyPaletteColor('transparent')" title="Transparent">✕</div>
+    </div>
+    <div class="cp-swatches" id="customSwatches"
+      style="margin-top:2px; border-top:1px solid var(--border); padding-top:6px; display:none;"></div>
+    <div class="cp-hex-row">
+      <input type="text" class="cp-hex-input" id="paletteHexInput" placeholder="#HEX">
+      <button class="cp-btn" onclick="applyPaletteHex()">Apply</button>
+    </div>
+    <div class="cp-hex-row" style="justify-content:space-between">
+      <button class="cp-btn" style="flex:1"
+        onclick="document.getElementById('paletteNativeInput').click()">Advanced</button>
+      <button class="cp-btn" onclick="closeColorPalette()">✕</button>
+    </div>
+    <input type="color" id="paletteNativeInput" style="display:none" onchange="applyPaletteColor(this.value)">
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/state.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/textEditor.js"></script>
+  <script src="js/canvas.js"></script>
+  <script src="js/home.js"></script>
+  <script src="js/python.js"></script>
+  <script src="js/app.js"></script>
+
+</body>
+
+</html>
