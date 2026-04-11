@@ -245,61 +245,109 @@ function startDrag(e, idx) {
   document.addEventListener('mouseup', onUp);
 }
 
-// Compute limits for pushing cell j in a direction, considering borders AND other cells
-function pushLimitX(j, dir, allEls, idx) {
-  // dir: 'right' or 'left'
-  const me = allEls[j];
-  let limit;
-  if (dir === 'right') {
-    limit = CANVAS_W - BORDER_SNAP_MARGIN - me.w;
-    for (let k = 0; k < allEls.length; k++) {
-      if (k === j || k === idx) continue;
-      const o = allEls[k];
-      // Only block if vertically overlapping
-      if (!(me.y >= o.y + o.h || me.y + me.h <= o.y)) {
-        let blockX = o.x - ELEMENT_GAP - me.w;
-        if (blockX >= me.x && blockX < limit) limit = blockX;
-      }
-    }
-  } else {
-    limit = BORDER_SNAP_MARGIN;
-    for (let k = 0; k < allEls.length; k++) {
-      if (k === j || k === idx) continue;
-      const o = allEls[k];
-      if (!(me.y >= o.y + o.h || me.y + me.h <= o.y)) {
-        let blockX = o.x + o.w + ELEMENT_GAP;
-        if (blockX <= me.x && blockX > limit) limit = blockX;
+// Compute continuous propagation networks for physics logic
+function getSlackGraph(els, dir, skipIdx) {
+  let N = els.length;
+  let adj = Array.from({length: N}, () => []);
+  for (let u = 0; u < N; u++) {
+    for (let v = 0; v < N; v++) {
+      if (u === v || v === skipIdx) continue;
+      
+      let elU = els[u];
+      let elV = els[v];
+      
+      if (dir === 'right') {
+        if (!(elU.y >= elV.y + elV.h || elU.y + elU.h <= elV.y)) {
+          if (elV.x >= elU.x) { 
+            let dist = elV.x - (elU.x + elU.w);
+            let gap = Math.min(ELEMENT_GAP, dist);
+            let slack = Math.max(0, dist - gap);
+            adj[u].push({ to: v, slack: slack });
+          }
+        }
+      } else if (dir === 'left') {
+        if (!(elU.y >= elV.y + elV.h || elU.y + elU.h <= elV.y)) {
+          if (elV.x + elV.w <= elU.x + elU.w) { 
+            let dist = elU.x - (elV.x + elV.w);
+            let gap = Math.min(ELEMENT_GAP, dist);
+            let slack = Math.max(0, dist - gap);
+            adj[u].push({ to: v, slack: slack });
+          }
+        }
+      } else if (dir === 'down') {
+        if (!(elU.x >= elV.x + elV.w || elU.x + elU.w <= elV.x)) {
+          if (elV.y >= elU.y) {
+            let dist = elV.y - (elU.y + elU.h);
+            let gap = Math.min(ELEMENT_GAP, dist);
+            let slack = Math.max(0, dist - gap);
+            adj[u].push({ to: v, slack: slack });
+          }
+        }
+      } else if (dir === 'up') {
+        if (!(elU.x >= elV.x + elV.w || elU.x + elU.w <= elV.x)) {
+          if (elV.y + elV.h <= elU.y + elU.h) {
+            let dist = elU.y - (elV.y + elV.h);
+            let gap = Math.min(ELEMENT_GAP, dist);
+            let slack = Math.max(0, dist - gap);
+            adj[u].push({ to: v, slack: slack });
+          }
+        }
       }
     }
   }
-  return limit;
+  return adj;
 }
 
-function pushLimitY(j, dir, allEls, idx) {
-  const me = allEls[j];
-  let limit;
-  if (dir === 'down') {
-    limit = CANVAS_H - BORDER_SNAP_MARGIN - me.h;
-    for (let k = 0; k < allEls.length; k++) {
-      if (k === j || k === idx) continue;
-      const o = allEls[k];
-      if (!(me.x >= o.x + o.w || me.x + me.w <= o.x)) {
-        let blockY = o.y - ELEMENT_GAP - me.h;
-        if (blockY >= me.y && blockY < limit) limit = blockY;
-      }
-    }
-  } else {
-    limit = BORDER_SNAP_MARGIN;
-    for (let k = 0; k < allEls.length; k++) {
-      if (k === j || k === idx) continue;
-      const o = allEls[k];
-      if (!(me.x >= o.x + o.w || me.x + me.w <= o.x)) {
-        let blockY = o.y + o.h + ELEMENT_GAP;
-        if (blockY <= me.y && blockY > limit) limit = blockY;
+function getShortestSlacks(adj, startNode, N) {
+  let slacks = Array(N).fill(Infinity);
+  slacks[startNode] = 0;
+  let pq = [{node: startNode, d: 0}];
+  while(pq.length > 0) {
+    pq.sort((a,b) => a.d - b.d);
+    let curr = pq.shift();
+    if (curr.d > slacks[curr.node]) continue;
+    for (let edge of adj[curr.node]) {
+      let nextD = curr.d + edge.slack;
+      if (nextD < slacks[edge.to]) {
+        slacks[edge.to] = nextD;
+        pq.push({node: edge.to, d: nextD});
       }
     }
   }
-  return limit;
+  return slacks;
+}
+
+function applyCascade(originalEls, currentEls, idx, dir, pushAmount) {
+  if (pushAmount <= 0) return;
+  const N = originalEls.length;
+  const adj = getSlackGraph(originalEls, dir, idx);
+  const slacks = getShortestSlacks(adj, idx, N);
+  
+  let maxAmount = Infinity;
+  for (let k = 0; k < N; k++) {
+    if (k === idx || slacks[k] === Infinity) continue;
+    let marginSlack = 0;
+    if (dir === 'right') marginSlack = (CANVAS_W - BORDER_SNAP_MARGIN - originalEls[k].w) - originalEls[k].x;
+    else if (dir === 'left') marginSlack = originalEls[k].x - BORDER_SNAP_MARGIN;
+    else if (dir === 'down') marginSlack = (CANVAS_H - BORDER_SNAP_MARGIN - originalEls[k].h) - originalEls[k].y;
+    else if (dir === 'up') marginSlack = originalEls[k].y - BORDER_SNAP_MARGIN;
+    
+    maxAmount = Math.min(maxAmount, marginSlack + slacks[k]);
+  }
+  
+  let actualPushNetwork = Math.min(pushAmount, maxAmount);
+  if (actualPushNetwork < 0) actualPushNetwork = 0;
+  
+  for (let k = 0; k < N; k++) {
+    if (k === idx || slacks[k] === Infinity) continue;
+    let pushK = Math.max(0, actualPushNetwork - slacks[k]);
+    if (pushK > 0) {
+      if (dir === 'right') currentEls[k].x = Math.max(currentEls[k].x, originalEls[k].x + pushK);
+      else if (dir === 'left') currentEls[k].x = Math.min(currentEls[k].x, originalEls[k].x - pushK);
+      else if (dir === 'down') currentEls[k].y = Math.max(currentEls[k].y, originalEls[k].y + pushK);
+      else if (dir === 'up') currentEls[k].y = Math.min(currentEls[k].y, originalEls[k].y - pushK);
+    }
+  }
 }
 
 function startResize(e, idx, corner = 'se') {
@@ -346,53 +394,23 @@ function startResize(e, idx, corner = 'se') {
       let targetR = el.x + targetW;
       let targetB = el.y + targetH;
 
+      let orig_h = originalEls[idx].h;
+      originalEls[idx].h = targetH; // A's height expands, hitting vertically spanning elements
+      let pushAmountX = 0;
+      if (el.type !== 'jupyter' && targetW > sW) pushAmountX = targetW - sW;
+      applyCascade(originalEls, slides[currentSlideIdx].elements, idx, 'right', pushAmountX);
+      originalEls[idx].h = orig_h;
+      
+      let orig_w = originalEls[idx].w;
+      originalEls[idx].w = targetW; // A's width expands, hitting horizontally spanning elements
+      let pushAmountY = 0;
+      if (el.type !== 'jupyter' && targetH > sH) pushAmountY = targetH - sH;
+      applyCascade(originalEls, slides[currentSlideIdx].elements, idx, 'down', pushAmountY);
+      originalEls[idx].w = orig_w;
+      
       slides[currentSlideIdx].elements.forEach((other, j) => {
         if (j === idx) return;
-        const origB = originalEls[j];
-        
-        // SE Push X
-        if (el.type !== 'jupyter' && !(el.y >= origB.y + origB.h || el.y + targetH <= origB.y) && originalEls[idx].x < origB.x) {
-          if (targetR > origB.x - ELEMENT_GAP) {
-            let newOtherX = targetR + ELEMENT_GAP;
-            let maxOtherX = pushLimitX(j, 'right', slides[currentSlideIdx].elements, idx);
-            if (newOtherX > maxOtherX) {
-              other.x = maxOtherX;
-              let excess = targetR - (maxOtherX - ELEMENT_GAP);
-              if (excess > 0 && excess < 25) {
-                  targetR = maxOtherX - ELEMENT_GAP;
-                  targetW = targetR - el.x;
-              } else if (excess >= 25) {
-                  targetR = Math.min(maxOtherX, targetR - 25);
-                  targetW = targetR - el.x;
-              }
-            } else {
-              other.x = newOtherX;
-            }
-          }
-        }
-        
-        // SE Push Y
-        if (!(el.x >= origB.x + origB.w || el.x + targetW <= origB.x) && originalEls[idx].y < origB.y) {
-          if (targetB > origB.y - ELEMENT_GAP) {
-            let newOtherY = targetB + ELEMENT_GAP;
-            let maxOtherY = pushLimitY(j, 'down', slides[currentSlideIdx].elements, idx);
-            if (newOtherY > maxOtherY) {
-              other.y = maxOtherY;
-              let excess = targetB - (maxOtherY - ELEMENT_GAP);
-              if (excess > 0 && excess < 25) {
-                  targetB = maxOtherY - ELEMENT_GAP;
-                  targetH = targetB - el.y;
-              } else if (excess >= 25) {
-                  targetB = Math.min(maxOtherY, targetB - 25);
-                  targetH = targetB - el.y;
-              }
-            } else {
-              other.y = newOtherY;
-            }
-          }
-        }
-        
-        if (other.x !== origB.x || other.y !== origB.y) {
+        if (other.x !== originalEls[j].x || other.y !== originalEls[j].y) {
            const wrOther = document.querySelector(`[data-el-idx="${j}"]`);
            if (wrOther) { wrOther.style.left = other.x + 'px'; wrOther.style.top = other.y + 'px'; }
         }
@@ -437,53 +455,29 @@ function startResize(e, idx, corner = 'se') {
       let targetX = originalX + dx;
       let targetY = originalY + dy;
       
+      let orig_y = originalEls[idx].y;
+      let orig_h = originalEls[idx].h;
+      originalEls[idx].y = targetY;
+      originalEls[idx].h = targetH;
+      let pushAmountLeft = 0;
+      if (el.type !== 'jupyter' && targetX < originalX) pushAmountLeft = originalX - targetX;
+      applyCascade(originalEls, slides[currentSlideIdx].elements, idx, 'left', pushAmountLeft);
+      originalEls[idx].y = orig_y;
+      originalEls[idx].h = orig_h;
+      
+      let orig_x = originalEls[idx].x;
+      let orig_w = originalEls[idx].w;
+      originalEls[idx].x = targetX;
+      originalEls[idx].w = targetW;
+      let pushAmountUp = 0;
+      if (el.type !== 'jupyter' && targetY < originalY) pushAmountUp = originalY - targetY;
+      applyCascade(originalEls, slides[currentSlideIdx].elements, idx, 'up', pushAmountUp);
+      originalEls[idx].x = orig_x;
+      originalEls[idx].w = orig_w;
+      
       slides[currentSlideIdx].elements.forEach((other, j) => {
         if (j === idx) return;
-        const origB = originalEls[j];
-        
-        // NW Push X (Leftwards)
-        if (el.type !== 'jupyter' && !(originalY >= origB.y + origB.h || originalY + sH <= origB.y) && originalEls[idx].x > origB.x) {
-          if (targetX < origB.x + origB.w + ELEMENT_GAP) {
-            let newOtherX = targetX - ELEMENT_GAP - origB.w;
-            let minOtherX = pushLimitX(j, 'left', slides[currentSlideIdx].elements, idx);
-            if (newOtherX < minOtherX) {
-              other.x = minOtherX;
-              let excess = (minOtherX + origB.w + ELEMENT_GAP) - targetX;
-              if (excess > 0 && excess < 25) {
-                 targetX = minOtherX + origB.w + ELEMENT_GAP;
-                 targetW = (originalX + sW) - targetX;
-              } else if (excess >= 25) {
-                 targetX = Math.max(minOtherX + origB.w, targetX + 25);
-                 targetW = (originalX + sW) - targetX;
-              }
-            } else {
-              other.x = newOtherX;
-            }
-          }
-        }
-        
-        // NW Push Y (Upwards)
-        if (!(originalX >= origB.x + origB.w || originalX + sW <= origB.x) && originalEls[idx].y > origB.y) {
-          if (targetY < origB.y + origB.h + ELEMENT_GAP) {
-            let newOtherY = targetY - ELEMENT_GAP - origB.h;
-            let minOtherY = pushLimitY(j, 'up', slides[currentSlideIdx].elements, idx);
-            if (newOtherY < minOtherY) {
-              other.y = minOtherY;
-              let excess = (minOtherY + origB.h + ELEMENT_GAP) - targetY;
-              if (excess > 0 && excess < 25) {
-                 targetY = minOtherY + origB.h + ELEMENT_GAP;
-                 targetH = (originalY + sH) - targetY;
-               } else if (excess >= 25) {
-                 targetY = Math.max(minOtherY + origB.h, targetY + 25);
-                 targetH = (originalY + sH) - targetY;
-               }
-            } else {
-              other.y = newOtherY;
-            }
-          }
-        }
-        
-        if (other.x !== origB.x || other.y !== origB.y) {
+        if (other.x !== originalEls[j].x || other.y !== originalEls[j].y) {
            const wrOther = document.querySelector(`[data-el-idx="${j}"]`);
            if (wrOther) { wrOther.style.left = other.x + 'px'; wrOther.style.top = other.y + 'px'; }
         }

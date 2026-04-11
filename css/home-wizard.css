@@ -1,0 +1,431 @@
+/* ═══════ HOME SCREEN ═══════ */
+.home-screen {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100vw; height: 100vh;
+  background: var(--bg-app);
+  z-index: 99998;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 80px 40px 40px;
+  overflow-y: auto;
+  transition: opacity 600ms ease, visibility 600ms;
+}
+.home-screen.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.home-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+.home-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 48px;
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--accent-bright), var(--cyan));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.home-desc {
+  font-size: 16px;
+  color: var(--text-muted);
+  margin-bottom: 48px;
+  text-align: center;
+}
+
+.home-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 20px;
+  width: 100%;
+  max-width: 960px;
+}
+
+.home-card {
+  position: relative;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px;
+  cursor: pointer;
+  transition: all 220ms ease;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 160px;
+}
+.home-card:hover {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+  transform: translateY(-4px);
+  box-shadow: 0 12px 40px rgba(124, 108, 240, 0.15);
+}
+
+.home-card-new {
+  border-style: dashed;
+  border-color: var(--border-accent);
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+}
+.home-card-new:hover {
+  border-color: var(--accent);
+  background: rgba(124, 108, 240, 0.06);
+}
+
+.home-card-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-bright));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  color: #fff;
+  font-weight: 300;
+  box-shadow: 0 4px 20px rgba(124, 108, 240, 0.35);
+}
+.home-card-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.home-card-preview {
+  width: 100%;
+  height: 80px;
+  background: var(--bg-panel);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.home-card-preview-text {
+  font-family: 'Playfair Display', serif;
+  font-weight: 800;
+  font-size: 28px;
+  color: var(--accent);
+  opacity: 0.3;
+}
+
+.home-card-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.home-card-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.home-card-date {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.home-card-delete {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: all 180ms ease;
+}
+.home-card:hover .home-card-delete { opacity: 1; }
+.home-card-delete:hover {
+  background: rgba(248, 113, 113, 0.15);
+  color: var(--red);
+}
+
+
+/* ═══════ WIZARD MODAL ═══════ */
+.wizard-overlay {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100vw; height: 100vh;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(12px);
+  z-index: 100000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: wizFadeIn 250ms ease;
+}
+@keyframes wizFadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+.wizard-box {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 36px 40px;
+  width: 90%;
+  max-width: 520px;
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.6);
+  position: relative;
+  animation: wizSlideUp 300ms ease;
+}
+@keyframes wizSlideUp {
+  0% { opacity: 0; transform: translateY(20px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.wizard-step {
+  display: none;
+  flex-direction: column;
+  gap: 16px;
+}
+.wizard-step.active {
+  display: flex;
+}
+
+.wizard-heading {
+  font-family: 'Playfair Display', serif;
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin: 0;
+}
+.wizard-label {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.wizard-input {
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-family: 'DM Sans', sans-serif;
+  outline: none;
+  transition: border-color 180ms ease;
+}
+.wizard-input:focus {
+  border-color: var(--accent);
+}
+.wizard-input::placeholder {
+  color: var(--text-muted);
+}
+
+.wizard-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.wizard-btn {
+  padding: 10px 22px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: 'DM Sans', sans-serif;
+  cursor: pointer;
+  transition: all 180ms ease;
+  border: none;
+}
+.wizard-btn.primary {
+  background: linear-gradient(135deg, var(--accent), var(--accent-bright));
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(124, 108, 240, 0.3);
+}
+.wizard-btn.primary:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px rgba(124, 108, 240, 0.4);
+}
+.wizard-btn.secondary {
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+.wizard-btn.secondary:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+
+/* ═══════ WIZARD STEP 2 — PROFILES ═══════ */
+.wizard-profiles {
+  display: flex;
+  gap: 12px;
+}
+
+.wizard-profile-btn {
+  flex: 1;
+  background: var(--bg-card);
+  border: 2px solid var(--border);
+  border-radius: 14px;
+  padding: 20px 12px;
+  cursor: pointer;
+  transition: all 200ms ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+.wizard-profile-btn:hover {
+  border-color: var(--border-accent);
+  background: var(--bg-hover);
+}
+.wizard-profile-btn.selected {
+  border-color: var(--accent);
+  background: rgba(124, 108, 240, 0.08);
+  box-shadow: 0 0 0 1px var(--accent), 0 4px 20px rgba(124, 108, 240, 0.15);
+}
+
+.wizard-profile-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--bg-panel);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+}
+.wizard-profile-btn.selected .wizard-profile-icon {
+  background: linear-gradient(135deg, var(--accent), var(--accent-bright));
+  color: #fff;
+}
+
+.wizard-profile-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.wizard-profile-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+
+/* ═══════ WIZARD STEP 3 — PACKAGE LIST ═══════ */
+.wizard-pkg-list {
+  max-height: 280px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px;
+}
+.wizard-pkg-list::-webkit-scrollbar { width: 5px; }
+.wizard-pkg-list::-webkit-scrollbar-thumb { background: var(--border-accent); border-radius: 4px; }
+
+.wizard-pkg-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-secondary);
+  transition: all 150ms ease;
+  user-select: none;
+}
+.wizard-pkg-item:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.wizard-pkg-item.checked {
+  background: rgba(124, 108, 240, 0.1);
+  color: var(--accent-bright);
+}
+
+.wizard-pkg-item input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+
+/* ═══════ WIZARD STEP 4 — ALIAS LIST ═══════ */
+.wizard-alias-list {
+  max-height: 280px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.wizard-alias-list::-webkit-scrollbar { width: 5px; }
+.wizard-alias-list::-webkit-scrollbar-thumb { background: var(--border-accent); border-radius: 4px; }
+
+.wizard-alias-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.wizard-alias-name {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 120px;
+}
+.wizard-alias-arrow {
+  color: var(--text-muted);
+  font-size: 16px;
+}
+.wizard-alias-input {
+  flex: 1;
+  padding: 8px 12px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--accent-bright);
+  font-size: 13px;
+  font-family: 'JetBrains Mono', monospace;
+  outline: none;
+  transition: border-color 180ms ease;
+}
+.wizard-alias-input:focus {
+  border-color: var(--accent);
+}
+.wizard-alias-input::placeholder {
+  color: var(--text-muted);
+}

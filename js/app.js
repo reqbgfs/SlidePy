@@ -1,9 +1,7 @@
 // ═══════ APP INIT ═══════
-// Set to true to skip the home screen and load directly with Default packages
-var SKIP_HOME = true;
 
 function init() {
-  if (SKIP_HOME) {
+  if (typeof skip_homescreen !== 'undefined' && skip_homescreen) {
     // Skip home screen — go directly to editor with default profile
     document.getElementById('homeScreen').style.display = 'none';
     activePackageConfig = { packages: DEFAULT_PACKAGES };

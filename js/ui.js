@@ -484,22 +484,92 @@ function scalePresentationSlide() {
   const scaleX = window.innerWidth / 960;
   const scaleY = window.innerHeight / 540;
   const scale = Math.min(scaleX, scaleY);
-  canvas.style.zoom = scale;
-  // Refresh all CodeMirror instances so cursor metrics recalculate after zoom
+  
+  canvas.style.transformOrigin = 'center center';
+  canvas.style.transform = `scale(${scale})`;
+
+  // Fix: apply inverse scale to the cursor layer only, so net visual scale = 1,
+  // making CSS px == visual px for cursors/selections.
   setTimeout(() => {
-    Object.values(codeMirrors).forEach(cm => cm.refresh());
-  }, 50);
+    Object.values(codeMirrors).forEach(cm => {
+      cm.refresh();
+      const cursorsEl = cm.getWrapperElement().querySelector('.CodeMirror-cursors');
+      if (cursorsEl) {
+        cursorsEl.style.transform = `scale(${1 / scale})`;
+        cursorsEl.style.transformOrigin = '0 0';
+      }
+    });
+  }, 100);
 }
 window.addEventListener('resize', scalePresentationSlide);
 
 function startPresentation() { persistAll(); presentIdx = 0; while (presentIdx < slides.length && slides[presentIdx].hidden) presentIdx++; if (presentIdx >= slides.length) { toast('No visible slides!'); return; } document.body.classList.add('presenting'); document.getElementById('presentNav').style.display = 'flex'; currentSlideIdx = presentIdx; selectedElIdx = -1; renderSlide(); updatePC(); scalePresentationSlide(); document.addEventListener('keydown', pkh); }
-function stopPresentation() { const canvas = document.getElementById('slideCanvas'); if (canvas) { canvas.style.zoom = ''; canvas.style.transform = ''; } document.body.classList.remove('presenting'); document.getElementById('presentNav').style.display = 'none'; document.removeEventListener('keydown', pkh); renderSlide(); }
-function presentNext() { let n = presentIdx + 1; while (n < slides.length && slides[n].hidden) n++; if (n >= slides.length) return; presentIdx = n; currentSlideIdx = presentIdx; renderSlide(); updatePC(); }
-function presentPrev() { let p = presentIdx - 1; while (p >= 0 && slides[p].hidden) p--; if (p < 0) return; presentIdx = p; currentSlideIdx = presentIdx; renderSlide(); updatePC(); }
-function pkh(e) { if (e.key === 'ArrowRight' || e.key === ' ') presentNext(); else if (e.key === 'ArrowLeft') presentPrev(); else if (e.key === 'Escape') stopPresentation(); }
+function stopPresentation() {
+  const canvas = document.getElementById('slideCanvas');
+  if (canvas) {
+    canvas.style.zoom = '';
+    canvas.style.transform = '';
+    canvas.style.transformOrigin = '';
+  }
+  
+  // Remove CodeMirror cursor layer counter-transforms
+  Object.values(codeMirrors).forEach(cm => {
+    const cursorsEl = cm.getWrapperElement().querySelector('.CodeMirror-cursors');
+    if (cursorsEl) { cursorsEl.style.transform = ''; cursorsEl.style.transformOrigin = ''; }
+  });
+  
+  document.body.classList.remove('presenting');
+  document.getElementById('presentNav').style.display = 'none';
+  document.removeEventListener('keydown', pkh);
+  renderSlide();
+}
+function presentNext() { let n = presentIdx + 1; while (n < slides.length && slides[n].hidden) n++; if (n >= slides.length) return; presentIdx = n; currentSlideIdx = presentIdx; renderSlide(); updatePC(); scalePresentationSlide(); }
+function presentPrev() { let p = presentIdx - 1; while (p >= 0 && slides[p].hidden) p--; if (p < 0) return; presentIdx = p; currentSlideIdx = presentIdx; renderSlide(); updatePC(); scalePresentationSlide(); }
+function pkh(e) {
+  // Don't intercept keys when the user is typing in a CodeMirror editor
+  const cmFocused = document.activeElement && document.activeElement.closest('.CodeMirror');
+  if (cmFocused && e.key !== 'Escape') return;
+  if (e.key === 'ArrowRight' || e.key === ' ') presentNext();
+  else if (e.key === 'ArrowLeft') presentPrev();
+  else if (e.key === 'Escape') stopPresentation();
+}
 function updatePC() { const v = slides.filter(s => !s.hidden); document.getElementById('presentCounter').textContent = `${v.indexOf(slides[presentIdx]) + 1} / ${v.length}`; }
 
 // ═══════ SAVE/LOAD ═══════
-function exportJSON() { persistAll(); const d = { title: document.getElementById('presTitle').value, slides, uploadedPyFiles }; const b = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' }); const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href = u; a.download = (d.title || 'pres') + '.slidepy.json'; a.click(); URL.revokeObjectURL(u); toast('Saved!'); }
+function exportJSON() {
+  persistAll();
+  const d = {
+    title: document.getElementById('presTitle').value,
+    slides,
+    uploadedPyFiles,
+    packages: activePackageConfig ? activePackageConfig.packages : DEFAULT_PACKAGES
+  };
+  const b = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' });
+  const u = URL.createObjectURL(b);
+  const a = document.createElement('a');
+  a.href = u;
+  a.download = (d.title || 'pres').replace(/\s+/g, '_') + '.pyslide';
+  a.click();
+  URL.revokeObjectURL(u);
+  toast('Exported!');
+}
 function triggerLoad() { document.getElementById('loadInput').click(); }
-function importJSON(e) { const f = e.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = (re) => { try { const d = JSON.parse(re.target.result); slides = d.slides || []; uploadedPyFiles = d.uploadedPyFiles || {}; document.getElementById('presTitle').value = d.title || 'Untitled'; currentSlideIdx = 0; selectedElIdx = -1; renderSidebar(); renderSlide(); renderUploadedFiles(); toast('Loaded!'); } catch (err) { toast('Failed to load'); } }; r.readAsText(f); e.target.value = ''; }
+function importJSON(e) {
+  const f = e.target.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = (re) => {
+    try {
+      const d = JSON.parse(re.target.result);
+      slides = d.slides || [];
+      uploadedPyFiles = d.uploadedPyFiles || {};
+      document.getElementById('presTitle').value = d.title || 'Untitled';
+      if (d.packages) activePackageConfig = { packages: d.packages };
+      currentSlideIdx = 0; selectedElIdx = -1;
+      activePresentationId = crypto.randomUUID();
+      saveCurrentPresentation();
+      renderSidebar(); renderSlide(); renderUploadedFiles();
+      toast('Loaded!');
+    } catch (err) { toast('Failed to load'); }
+  };
+  r.readAsText(f); e.target.value = '';
+}

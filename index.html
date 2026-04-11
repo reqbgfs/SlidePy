@@ -18,6 +18,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js"></script>
   <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
 
+  <script>var skip_homescreen = false;</script>
+
   <style>
     /* Resizing Highlights */
     #slideCanvas.resizing-mode .slide-element-free {
@@ -35,7 +37,9 @@
       <div class="loading-logo">Sp</div>
       <h1 class="loading-title">SlidePy</h1>
       <p class="loading-subtitle">Initializing Python environment...</p>
-      <div class="loading-bar"><div class="loading-bar-fill"></div></div>
+      <div class="loading-bar">
+        <div class="loading-bar-fill"></div>
+      </div>
     </div>
   </div>
 
@@ -91,10 +95,24 @@
       <!-- Step 3: Custom Package Selection -->
       <div class="wizard-step" id="wizardStep3">
         <h2 class="wizard-heading">Select Packages</h2>
-        <input class="wizard-input" id="wizardPkgSearch" type="text" placeholder="Search packages..." oninput="renderPackageList()" autocomplete="off">
+        <input class="wizard-input" id="wizardPkgSearch" type="text" placeholder="Search packages..."
+          oninput="renderPackageList()" autocomplete="off">
         <div class="wizard-pkg-list" id="wizardPkgList"></div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+          <button class="wizard-btn secondary" onclick="fetchPyodidePackages()" id="btnFetchPkgs"
+            style="font-size:12px; padding:6px 12px">🌐 Load Full Directory</button>
+
+          <div style="display:flex; gap:6px;">
+            <input class="wizard-input" id="wizardManualPkg" type="text" placeholder="Manual PyPI pkg"
+              style="margin-bottom:0; padding:6px 10px; width:130px; font-size:12px">
+            <button class="wizard-btn secondary" onclick="addManualPackage()"
+              style="font-size:12px; padding:6px 10px">Add</button>
+          </div>
+        </div>
+
         <div class="wizard-actions">
-          <button class="wizard-btn secondary" onclick="showWizardStep(2)">← Back</button>
+          <button class="wizard-btn secondary" onclick="wizardBack(3)">← Back</button>
           <button class="wizard-btn primary" onclick="wizardNext3()">Set Aliases →</button>
         </div>
       </div>
@@ -104,8 +122,9 @@
         <p class="wizard-label">Assign import aliases (optional)</p>
         <div class="wizard-alias-list" id="wizardAliasList"></div>
         <div class="wizard-actions">
-          <button class="wizard-btn secondary" onclick="showWizardStep(3)">← Back</button>
-          <button class="wizard-btn primary" onclick="wizardFinish()">Create Presentation →</button>
+          <button class="wizard-btn secondary" onclick="wizardBack(4)">← Back</button>
+          <button class="wizard-btn primary" id="wizardFinishBtn" onclick="wizardFinish()">Create Presentation
+            →</button>
         </div>
       </div>
     </div>
@@ -115,6 +134,7 @@
     <div class="topbar-left">
       <div class="logo-icon">Sp</div>
       <span class="logo">SlidePy</span>
+      <button class="tb-btn home-btn" onclick="goHome()" title="Back to Home">🏠</button>
       <input class="pres-title" id="presTitle" value="Untitled Presentation" spellcheck="false">
     </div>
     <div class="topbar-center">
@@ -122,10 +142,14 @@
       <button class="tb-btn" onclick="redo()">↪ Redo</button>
       <div class="tb-sep"></div>
       <button class="tb-btn" onclick="openUploadModal()">📦 Upload .py</button>
+      <button class="tb-btn" onclick="openPackageEditor()">⚙ Edit Packages</button>
       <div class="tb-sep"></div>
-      <button class="tb-btn" onclick="exportJSON()">💾 Save</button>
+      <button class="tb-btn" onclick="saveCurrentPresentation()">💾 Save</button>
+      <button class="tb-btn" onclick="exportJSON()">📤 Export</button>
       <button class="tb-btn" onclick="triggerLoad()">📂 Load</button>
-      <input type="file" id="loadInput" accept=".json" style="display:none" onchange="importJSON(event)">
+      <input type="file" id="loadInput" accept=".json,.pyslide" style="display:none" onchange="importJSON(event)">
+      <input type="file" id="importHomeFile" accept=".pyslide,.json" style="display:none"
+        onchange="importPresentation(event)">
     </div>
     <div class="topbar-right">
       <button class="btn-share" onclick="openShareModal()">🔗 Share</button>

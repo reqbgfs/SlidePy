@@ -8,39 +8,100 @@ async function initPyodide(config) {
     if (lsText) lsText.textContent = 'Loading Python runtime...';
     pyodide = await loadPyodide({ indexURL:"https://cdn.jsdelivr.net/pyodide/v0.24.1/full/" });
     
-    if (lsBar) { lsBar.style.animation = 'none'; lsBar.style.width = '40%'; }
+    if (lsBar) { lsBar.style.animation = 'none'; lsBar.style.width = '10%'; }
+
+    // Mount IDBFS and perform isolation cleanup
+    const mountDir = '/IDBFS';
+    try { pyodide.FS.mkdir(mountDir); } catch(e) {} // may already exist
+    pyodide.FS.mount(pyodide.FS.filesystems.IDBFS, {}, mountDir);
+    
+    if (lsText) lsText.textContent = 'Syncing local cache...';
+    if (lsBar) lsBar.style.width = '20%';
+    await new Promise((resolve, reject) => {
+        pyodide.FS.syncfs(true, (err) => err ? reject(err) : resolve());
+    });
+    
+    if (lsBar) lsBar.style.width = '30%';
+
+    // Garbage Collection: Delete orphans!
+    const validIds = JSON.parse(localStorage.getItem('slidepy_presentations') || '[]').map(p => p.id).filter(id => id);
+    if (typeof activePresentationId !== 'undefined' && activePresentationId && !validIds.includes(activePresentationId)) {
+        validIds.push(activePresentationId);
+    }
+
+    pyodide.runPython(`
+import os, shutil
+valid_ids = ${JSON.stringify(validIds)}
+mount_dir = '${mountDir}'
+try:
+    for d in os.listdir(mount_dir):
+        if d not in valid_ids and d not in ['.', '..']:
+            shutil.rmtree(os.path.join(mount_dir, d), ignore_errors=True)
+except Exception as e:
+    print(f"Cleanup error: {e}")
+    `);
+
+    // Setup active presentation's environment target
+    const presId = (typeof activePresentationId !== 'undefined' && activePresentationId) ? activePresentationId : 'default';
+    const envDir = `${mountDir}/${presId}`;
+    const sitePackages = `${envDir}/site-packages`;
+    
+    pyodide.runPython(`
+import os, sys
+site_pkg = '${sitePackages}'
+os.makedirs(site_pkg, exist_ok=True)
+if site_pkg not in sys.path:
+    sys.path.insert(0, site_pkg)
+    `);
 
     // Collect unique top-level package names for loadPackage
     const topLevelPkgs = [...new Set(pkgs.map(p => p.name.split('.')[0]).filter(n => n))];
+    const stdlibs = ['math','os','sys','time','json','re','datetime','random','collections','itertools','functools'];
 
     if (topLevelPkgs.length > 0) {
-      if (lsText) lsText.textContent = `Installing packages (${topLevelPkgs.join(', ')})...`;
-      // Try loading via pyodide.loadPackage first, fallback to micropip
+      await pyodide.loadPackage('micropip');
+      
       for (let i = 0; i < topLevelPkgs.length; i++) {
         const pName = topLevelPkgs[i];
-        if (lsBar) lsBar.style.width = (40 + Math.floor(50 * (i / topLevelPkgs.length))) + '%';
+        if (stdlibs.includes(pName)) continue;
+        
+        if (lsBar) lsBar.style.width = (35 + Math.floor(50 * (i / topLevelPkgs.length))) + '%';
+        if (lsText) lsText.textContent = `Installing ${pName}...`;
+        await new Promise(r => setTimeout(r, 10));
+        
         try {
+          // Try pyodide.loadPackage first (fastest, uses precompiled wheels)
           await pyodide.loadPackage(pName);
-        } catch(e) {
-          // Try micropip as fallback
+        } catch(e1) {
+          // Fall back to micropip for pure-python packages
           try {
-            await pyodide.loadPackage('micropip');
             await pyodide.runPythonAsync(`import micropip; await micropip.install('${pName}')`);
           } catch(e2) {
-            console.warn(`Could not install package: ${pName}`, e2);
+            console.warn(`Could not install ${pName}:`, e2.message || e2);
           }
         }
       }
+      
+      if (lsText) lsText.textContent = 'Saving to local cache...';
+      if (lsBar) lsBar.style.width = '85%';
+      await new Promise(r => setTimeout(r, 10));
+      await new Promise((resolve) => pyodide.FS.syncfs(false, resolve));
     }
 
     if (lsBar) lsBar.style.width = '90%';
     if (lsText) lsText.textContent = 'Configuring environment...';
+    await new Promise(r => setTimeout(r, 10));
 
     // Standard imports
     pyodide.runPython(`import sys, io`);
 
     // Import and alias each package
-    for (const pkg of pkgs) {
+    for (let i = 0; i < pkgs.length; i++) {
+      const pkg = pkgs[i];
+      if (lsText) lsText.textContent = `Importing ${pkg.name}...`;
+      if (lsBar) lsBar.style.width = (90 + Math.floor(10 * (i / pkgs.length))) + '%';
+      await new Promise(r => setTimeout(r, 10)); // allow browser paint
+      
       try {
         if (pkg.alias) {
           pyodide.runPython(`import ${pkg.name} as ${pkg.alias}`);
@@ -73,6 +134,87 @@ async function initPyodide(config) {
   setTimeout(() => { if (ls) { ls.style.display = 'none'; } }, 1100);
 }
 
+async function updatePyodideEnvironment(config) {
+  const ls = document.getElementById('loadingScreen');
+  const lsBar = ls ? ls.querySelector('.loading-bar-fill') : null;
+  const lsText = ls ? ls.querySelector('.loading-subtitle') : null;
+  
+  if (ls) { ls.style.display = 'flex'; ls.classList.remove('hidden'); }
+  if (lsBar) { lsBar.style.animation = 'none'; lsBar.style.width = '10%'; }
+  if (lsText) lsText.textContent = 'Uninstalling unused packages...';
+  
+  const pkgs = config && config.packages ? config.packages : DEFAULT_PACKAGES;
+  const presId = activePresentationId;
+  if (!presId) { toast('Error: No active presentation ID'); return; }
+
+  // Wipe cache and reconstruct
+  try {
+      await pyodide.runPythonAsync(`
+import shutil, os
+mount_dir = '/IDBFS/${presId}'
+shutil.rmtree(mount_dir, ignore_errors=True)
+site_pkg = f"{mount_dir}/site-packages"
+os.makedirs(site_pkg, exist_ok=True)
+      `);
+      if (lsBar) lsBar.style.width = '20%';
+  } catch(e) { console.error('Uninstall failed', e); }
+
+  const topLevelPkgs = [...new Set(pkgs.map(p => p.name.split('.')[0]).filter(n => n))];
+  const stdlibs = ['math','os','sys','time','json','re','datetime','random','collections','itertools','functools'];
+  
+  if (topLevelPkgs.length > 0) {
+      await pyodide.loadPackage('micropip');
+      
+      for (let i = 0; i < topLevelPkgs.length; i++) {
+        const pName = topLevelPkgs[i];
+        if (stdlibs.includes(pName)) continue;
+        
+        if (lsBar) lsBar.style.width = (35 + Math.floor(50 * (i / topLevelPkgs.length))) + '%';
+        if (lsText) lsText.textContent = `Installing ${pName}...`;
+        await new Promise(r => setTimeout(r, 10));
+        
+        try {
+          await pyodide.loadPackage(pName);
+        } catch(e1) {
+          try {
+            await pyodide.runPythonAsync(`import micropip; await micropip.install('${pName}')`);
+          } catch(e2) {
+            console.warn(`Could not install ${pName}:`, e2.message || e2);
+          }
+        }
+      }
+      
+      if (lsText) lsText.textContent = 'Saving to local cache...';
+      if (lsBar) lsBar.style.width = '85%';
+      await new Promise(r => setTimeout(r, 10));
+      await new Promise((resolve) => pyodide.FS.syncfs(false, resolve));
+  }
+  
+  if (lsBar) lsBar.style.width = '90%';
+  if (lsText) lsText.textContent = 'Configuring environment...';
+  await new Promise(r => setTimeout(r, 10));
+
+  pyodide.runPython(`import sys, io`);
+  
+  // Import aliases
+  for (let i = 0; i < pkgs.length; i++) {
+      const pkg = pkgs[i];
+      if (lsText) lsText.textContent = `Importing ${pkg.name}...`;
+      if (lsBar) lsBar.style.width = (90 + Math.floor(10 * (i / pkgs.length))) + '%';
+      await new Promise(r => setTimeout(r, 10));
+      
+      try {
+        if (pkg.alias) pyodide.runPython(`import ${pkg.name} as ${pkg.alias}`);
+        else pyodide.runPython(`import ${pkg.name}`);
+      } catch(e) { console.warn(`Could not import ${pkg.name}:`, e); }
+  }
+
+  toast('Python Environment Updated!');
+  
+  setTimeout(() => { if (ls) ls.classList.add('hidden'); }, 400);
+  setTimeout(() => { if (ls) { ls.style.display = 'none'; } }, 1100);
+}
+
 async function runCell(i) {
   if(!pyReady){toast('Python loading...');return;}
   const el=slides[currentSlideIdx].elements[i];
@@ -82,12 +224,12 @@ async function runCell(i) {
   out.innerHTML='<span style="color:var(--text-muted)">Executing...</span>';
   try {
     for(const[n,c] of Object.entries(uploadedPyFiles)){const mn=n.replace('.py','');pyodide.runPython(`import types,sys\nmod=types.ModuleType("${mn}")\nexec(${JSON.stringify(c)},mod.__dict__)\nsys.modules["${mn}"]=mod`);}
-    pyodide.runPython(`import sys,io\n_buf=io.StringIO()\nsys.stdout=_buf\nsys.stderr=_buf\nplt.close('all')`);
+    pyodide.runPython(`import sys,io\n_buf=io.StringIO()\nsys.stdout=_buf\nsys.stderr=_buf\ntry:\n  import matplotlib.pyplot as _plt_internal\n  _plt_internal.close('all')\nexcept Exception:\n  pass`);
     await pyodide.runPythonAsync(el.code);
-    const hasPlot=pyodide.runPython(`len(plt.get_fignums())>0`);
+    const hasPlot=pyodide.runPython(`_has_plot=False\ntry:\n  import matplotlib.pyplot as _plt_internal\n  _has_plot=len(_plt_internal.get_fignums())>0\nexcept Exception:\n  pass\n_has_plot`);
     let html=''; const stdout=pyodide.runPython(`_buf.getvalue()`);
     if(stdout) html+=`<span class="stdout">${escHtml(stdout)}</span>`;
-    if(hasPlot){const img=pyodide.runPython(`import base64\nbuf=io.BytesIO()\nplt.savefig(buf,format='png',dpi=120,bbox_inches='tight',facecolor='#1c1c26',edgecolor='none')\nbuf.seek(0)\nbase64.b64encode(buf.read()).decode('utf-8')`);html+=`<img src="data:image/png;base64,${img}">`;pyodide.runPython(`plt.close('all')`);}
+    if(hasPlot){const img=pyodide.runPython(`import base64\nbuf=io.BytesIO()\n_plt_internal.savefig(buf,format='png',dpi=120,bbox_inches='tight',facecolor='#1c1c26',edgecolor='none')\nbuf.seek(0)\n_img_b64=base64.b64encode(buf.read()).decode('utf-8')\n_plt_internal.close('all')\n_img_b64`);html+=`<img src="data:image/png;base64,${img}">`;}
     if(!html) html='<span style="color:var(--text-muted)">No output</span>';
     out.innerHTML=html; el.output=html;
     pyodide.runPython(`sys.stdout=sys.__stdout__;sys.stderr=sys.__stderr__`);

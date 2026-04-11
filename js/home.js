@@ -1,15 +1,12 @@
 // ═══════ HOME SCREEN ═══════
 const STORAGE_KEY = 'slidepy_presentations';
 const PYODIDE_PACKAGES = [
-  'beautifulsoup4','biopython','bleach','cycler','cssselect','decorator',
-  'docutils','html5lib','imageio','jedi','Jinja2','jsonschema','kiwisolver',
-  'lxml','MarkupSafe','matplotlib','micropip','mne','mpmath','networkx',
-  'nltk','numpy','openpyxl','packaging','pandas','Pillow','pluggy',
-  'pycparser','pyparsing','pyrsistent','python-dateutil','pytz','pyyaml',
-  'regex','scikit-learn','scipy','setuptools','six','sqlalchemy','statsmodels',
-  'sympy','tomli','uncertainties','xlrd'
+  'math','os','sys','time','json','re','datetime','random','collections','itertools','functools',
+  'beautifulsoup4','matplotlib','micropip','networkx','numpy','pandas','Pillow',
+  'scikit-learn','scipy','sympy','opencv-python'
 ];
 const DEFAULT_PACKAGES = [
+  { name: 'math', alias: '' },
   { name: 'numpy', alias: 'np' },
   { name: 'matplotlib', alias: '' },
   { name: 'matplotlib.pyplot', alias: 'plt' },
@@ -17,6 +14,9 @@ const DEFAULT_PACKAGES = [
 
 var activePackageConfig = null; // will hold final { packages: [{name, alias}] }
 var wizardSelectedPkgs = [];
+var activePresentationId = null; // Universal identifier for the current session
+var isPackageEditMode = false;
+var lastSavedSnapshot = null; // JSON snapshot to detect unsaved changes
 
 function getSavedPresentations() {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch(e) { return []; }
@@ -38,17 +38,28 @@ function renderHomeScreen() {
   newCard.onclick = () => openWizard();
   grid.appendChild(newCard);
 
+  // Import presentation card
+  const importCard = document.createElement('div');
+  importCard.className = 'home-card home-card-new';
+  importCard.innerHTML = `<div class="home-card-icon">📥</div><div class="home-card-label">Import .pyslide</div>`;
+  importCard.onclick = () => document.getElementById('importHomeFile').click();
+  grid.appendChild(importCard);
+
   // Existing presentations
   list.forEach((p, i) => {
     const card = document.createElement('div');
     card.className = 'home-card';
     const date = p.savedAt ? new Date(p.savedAt).toLocaleDateString() : '';
+    const slideCount = (p.slides || []).length;
+    const pkgCount = (p.packages || []).length;
     card.innerHTML = `
       <div class="home-card-preview"><div class="home-card-preview-text">Sp</div></div>
       <div class="home-card-info">
         <div class="home-card-name">${escHtml(p.name || 'Untitled')}</div>
         <div class="home-card-date">${date}</div>
+        <div class="home-card-meta">${slideCount} slide${slideCount !== 1 ? 's' : ''} · ${pkgCount} pkg${pkgCount !== 1 ? 's' : ''} · <span title="Saved in browser localStorage">💾 localStorage</span></div>
       </div>
+      <button class="home-card-delete" style="right: 36px; z-index: 10;" onclick="event.stopPropagation(); exportPresentation(${i})" title="Export">📤</button>
       <button class="home-card-delete" onclick="event.stopPropagation(); deletePresentation(${i})" title="Delete">✕</button>
     `;
     card.onclick = () => loadPresentation(i);
@@ -68,11 +79,20 @@ function loadPresentation(idx) {
   const list = getSavedPresentations();
   const p = list[idx];
   if (!p) return;
+  
+  if (!p.id) { 
+     p.id = crypto.randomUUID();
+     list[idx] = p;
+     savePresentationsList(list);
+  }
+  activePresentationId = p.id;
+  
   slides = p.slides || [];
   uploadedPyFiles = p.uploadedPyFiles || {};
   document.getElementById('presTitle').value = p.name || 'Untitled';
   currentSlideIdx = 0; selectedElIdx = -1;
   activePackageConfig = { packages: p.packages || DEFAULT_PACKAGES };
+  lastSavedSnapshot = JSON.stringify({ slides, title: p.name || 'Untitled' });
   document.getElementById('homeScreen').classList.add('hidden');
   setTimeout(() => document.getElementById('homeScreen').style.display = 'none', 600);
   showLoadingAndInit();
@@ -82,8 +102,12 @@ function saveCurrentPresentation() {
   const list = getSavedPresentations();
   persistAll();
   const name = document.getElementById('presTitle').value || 'Untitled';
-  const existing = list.findIndex(p => p.name === name);
+  
+  if (!activePresentationId) activePresentationId = crypto.randomUUID();
+  
+  const existing = list.findIndex(p => p.id === activePresentationId);
   const data = {
+    id: activePresentationId,
     name,
     slides: JSON.parse(JSON.stringify(slides)),
     uploadedPyFiles: { ...uploadedPyFiles },
@@ -93,11 +117,72 @@ function saveCurrentPresentation() {
   if (existing >= 0) list[existing] = data;
   else list.push(data);
   savePresentationsList(list);
+  lastSavedSnapshot = JSON.stringify({ slides, title: name });
   toast('Presentation saved!');
+}
+
+function hasUnsavedChanges() {
+  persistAll();
+  const current = JSON.stringify({ slides, title: document.getElementById('presTitle').value || 'Untitled' });
+  return lastSavedSnapshot !== null && current !== lastSavedSnapshot;
+}
+
+function goHome() {
+  if (hasUnsavedChanges()) {
+    const choice = confirm('You have unsaved changes. Save before leaving?');
+    if (choice) saveCurrentPresentation();
+  }
+  // Reset editor state
+  activePresentationId = null;
+  activePackageConfig = null;
+  lastSavedSnapshot = null;
+  slides = []; uploadedPyFiles = {}; codeMirrors = {};
+  selectedElIdx = -1; currentSlideIdx = 0;
+  // Show home screen
+  const hs = document.getElementById('homeScreen');
+  hs.style.display = '';
+  hs.classList.remove('hidden');
+  renderHomeScreen();
+}
+
+function exportPresentation(idx) {
+  const list = getSavedPresentations();
+  const p = list[idx];
+  if (!p) return;
+  const blob = new Blob([JSON.stringify(p, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (p.name || 'presentation').replace(/\s+/g, '_') + '.pyslide';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importPresentation(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const p = JSON.parse(e.target.result);
+      p.id = crypto.randomUUID(); // force new ID to prevent IDBFS overlap
+      p.savedAt = Date.now();
+      const list = getSavedPresentations();
+      list.push(p);
+      savePresentationsList(list);
+      renderHomeScreen();
+      toast('Imported presentation!');
+    } catch(err) {
+      alert('Invalid presentation file.');
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
 }
 
 // ═══════ WIZARD ═══════
 function openWizard() {
+  isPackageEditMode = false;
   document.getElementById('wizardModal').style.display = 'flex';
   showWizardStep(1);
   document.getElementById('wizardName').value = '';
@@ -105,8 +190,32 @@ function openWizard() {
   wizardSelectedPkgs = [];
 }
 
+function openPackageEditor() {
+  isPackageEditMode = true;
+  document.getElementById('wizardModal').style.display = 'flex';
+  wizardSelectedPkgs = activePackageConfig ? activePackageConfig.packages.map(p => p.name) : [];
+  
+  document.querySelectorAll('.wizard-profile-btn').forEach(b => b.classList.remove('selected'));
+  const profileC = document.getElementById('profileCustom');
+  if (profileC) profileC.classList.add('selected');
+  activeProfile = 'custom';
+  
+  renderPackageList();
+  showWizardStep(3);
+}
+
 function closeWizard() {
   document.getElementById('wizardModal').style.display = 'none';
+}
+
+// Back button — closes wizard instead of going to earlier steps when editing
+function wizardBack(fromStep) {
+  if (isPackageEditMode) {
+    closeWizard();
+    return;
+  }
+  // Normal mode: go to the previous step
+  showWizardStep(fromStep - 1);
 }
 
 function showWizardStep(n) {
@@ -151,13 +260,71 @@ function renderPackageList() {
   const filter = (document.getElementById('wizardPkgSearch')?.value || '').toLowerCase();
   const list = document.getElementById('wizardPkgList');
   list.innerHTML = '';
-  PYODIDE_PACKAGES.filter(p => p.toLowerCase().includes(filter)).forEach(name => {
+  const sortedPkgs = [...PYODIDE_PACKAGES].sort((a,b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+  sortedPkgs.filter(p => p.toLowerCase().includes(filter)).forEach(name => {
     const checked = wizardSelectedPkgs.includes(name);
     const item = document.createElement('label');
     item.className = 'wizard-pkg-item' + (checked ? ' checked' : '');
     item.innerHTML = `<input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleWizardPkg('${name}', this.checked)"><span>${name}</span>`;
     list.appendChild(item);
   });
+}
+
+async function fetchPyodidePackages() {
+  const btn = document.getElementById('btnFetchPkgs');
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading...'; }
+
+  const REPODATA_URL = 'https://cdn.jsdelivr.net/pyodide/v0.24.1/full/repodata.json';
+
+  try {
+    let pkgs = null;
+
+    // Primary: fetch via Pyodide's own HTTP module (bypasses file:// CORS restrictions)
+    if (typeof pyodide !== 'undefined' && pyodide && pyReady) {
+      try {
+        const result = await pyodide.runPythonAsync(`
+from pyodide.http import pyfetch
+response = await pyfetch('${REPODATA_URL}')
+data = await response.json()
+list(data.get('packages', {}).keys())
+        `);
+        pkgs = result.toJs ? result.toJs() : Array.from(result);
+      } catch(pyErr) {
+        console.warn('Pyodide fetch failed, trying browser fetch:', pyErr);
+      }
+    }
+
+    // Fallback: standard browser fetch (works when served over http/https)
+    if (!pkgs) {
+      const res = await fetch(REPODATA_URL);
+      const data = await res.json();
+      pkgs = Object.keys(data.packages || {});
+    }
+
+    if (pkgs && pkgs.length > 0) {
+      pkgs.forEach(p => {
+        if (!PYODIDE_PACKAGES.includes(p)) PYODIDE_PACKAGES.push(p);
+      });
+      renderPackageList();
+      if (btn) { btn.textContent = `Loaded (${pkgs.length} packages)`; }
+    } else {
+      throw new Error('Empty package list');
+    }
+  } catch(e) {
+    console.error('fetchPyodidePackages failed:', e);
+    if (btn) { btn.textContent = 'Failed — check console'; btn.disabled = false; }
+  }
+}
+
+function addManualPackage() {
+  const inp = document.getElementById('wizardManualPkg');
+  const val = inp.value.trim().toLowerCase();
+  if (val) {
+     if (!PYODIDE_PACKAGES.includes(val)) PYODIDE_PACKAGES.push(val);
+     if (!wizardSelectedPkgs.includes(val)) wizardSelectedPkgs.push(val);
+     inp.value = '';
+     renderPackageList();
+  }
 }
 
 function toggleWizardPkg(name, checked) {
@@ -175,29 +342,42 @@ function wizardNext3() {
   // Render alias step
   const list = document.getElementById('wizardAliasList');
   list.innerHTML = '';
+  
+  const finishBtn = document.getElementById('wizardFinishBtn');
+  if (finishBtn) finishBtn.textContent = isPackageEditMode ? 'Update Environment' : 'Create Presentation →';
+  
   wizardSelectedPkgs.forEach(name => {
     const row = document.createElement('div');
     row.className = 'wizard-alias-row';
-    row.innerHTML = `<span class="wizard-alias-name">${name}</span>
-      <span class="wizard-alias-arrow">→</span>
-      <input class="wizard-alias-input" data-pkg="${name}" placeholder="alias (optional)" value="">`;
+    const existingAlias = (activePackageConfig && activePackageConfig.packages.find(p => p.name === name))?.alias || '';
+    row.innerHTML = `<span class="wizard-alias-name" style="font-family:'JetBrains Mono'">import ${name} as</span>
+      <input class="wizard-alias-input" data-pkg="${name}" placeholder="alias (optional)" value="${existingAlias}">`;
     list.appendChild(row);
   });
   showWizardStep(4);
 }
 
 function wizardFinish() {
-  if (!activePackageConfig) {
+  if (!activePackageConfig || isPackageEditMode) {
     // Build from custom selection + aliases
     const inputs = document.querySelectorAll('.wizard-alias-input');
     const packages = [];
     inputs.forEach(inp => {
       packages.push({ name: inp.dataset.pkg, alias: inp.value.trim() });
     });
-    if (packages.length === 0) {
+    if (packages.length === 0 && wizardSelectedPkgs.length > 0) {
       wizardSelectedPkgs.forEach(name => packages.push({ name, alias: '' }));
     }
     activePackageConfig = { packages };
+  }
+
+  if (isPackageEditMode) {
+      saveCurrentPresentation();
+      closeWizard();
+      if (typeof updatePyodideEnvironment === 'function') {
+         updatePyodideEnvironment(activePackageConfig);
+      }
+      return;
   }
 
   closeWizard();
@@ -212,6 +392,8 @@ function wizardFinish() {
     { type:'subtitle', content:'Created with SlidePy', x:40, y:184, w:430, h:50, borderColor:'', bgColor:'', borderWidth:0, _bgHex:'#22222e', _bgAlpha:0 }
   ];
   currentSlideIdx = 0; selectedElIdx = -1;
+  activePresentationId = crypto.randomUUID();
+  saveCurrentPresentation(); // Register instantly for Python target caching
 
   document.getElementById('homeScreen').classList.add('hidden');
   setTimeout(() => document.getElementById('homeScreen').style.display = 'none', 600);
