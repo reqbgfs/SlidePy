@@ -301,7 +301,7 @@ async function fetchPyodidePackages() {
   const btn = document.getElementById('btnFetchPkgs');
   if (btn) { btn.disabled = true; btn.textContent = 'Loading...'; }
 
-  const REPODATA_URL = 'https://cdn.jsdelivr.net/pyodide/v0.24.1/full/repodata.json';
+  const REPODATA_URL = 'https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide-lock.json';
 
   try {
     let pkgs = null;
