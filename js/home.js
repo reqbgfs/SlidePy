@@ -52,12 +52,13 @@ function renderHomeScreen() {
     const date = p.savedAt ? new Date(p.savedAt).toLocaleDateString() : '';
     const slideCount = (p.slides || []).length;
     const pkgCount = (p.packages || []).length;
+    const storageLabel = GithubSync.isConnected() ? '💾 local + ☁ cloud' : '💾 localStorage';
     card.innerHTML = `
       <div class="home-card-preview"><div class="home-card-preview-text">Sp</div></div>
       <div class="home-card-info">
         <div class="home-card-name">${escHtml(p.name || 'Untitled')}</div>
         <div class="home-card-date">${date}</div>
-        <div class="home-card-meta">${slideCount} slide${slideCount !== 1 ? 's' : ''} · ${pkgCount} pkg${pkgCount !== 1 ? 's' : ''} · <span title="Saved in browser localStorage">💾 localStorage</span></div>
+        <div class="home-card-meta">${slideCount} slide${slideCount !== 1 ? 's' : ''} · ${pkgCount} pkg${pkgCount !== 1 ? 's' : ''} · <span title="Saved in browser storage and synced to GitHub">${storageLabel}</span></div>
       </div>
       <button class="home-card-delete" style="right: 36px; z-index: 10;" onclick="event.stopPropagation(); exportPresentation(${i})" title="Export">📤</button>
       <button class="home-card-delete" onclick="event.stopPropagation(); deletePresentation(${i})" title="Delete">✕</button>
@@ -68,11 +69,16 @@ function renderHomeScreen() {
 }
 
 function deletePresentation(idx) {
-  if (!confirm('Delete this presentation?')) return;
-  const list = getSavedPresentations();
-  list.splice(idx, 1);
-  savePresentationsList(list);
-  renderHomeScreen();
+  const btn = document.getElementById('btnConfirmDelete');
+  btn.onclick = () => {
+    const list = getSavedPresentations();
+    list.splice(idx, 1);
+    savePresentationsList(list);
+    renderHomeScreen();
+    closeModal('deleteConfirmModal');
+    toast('Presentation deleted');
+  };
+  document.getElementById('deleteConfirmModal').classList.add('show');
 }
 
 function loadPresentation(idx) {
@@ -405,4 +411,110 @@ function showLoadingAndInit() {
   if (ls) { ls.classList.remove('hidden'); ls.style.display = ''; }
   renderSidebar(); renderSlide(); setupDropZone();
   initPyodide(activePackageConfig);
+}
+
+// ═══════ CLOUD SYNC UI ═══════
+function openSyncModal() {
+  document.getElementById('syncModal').classList.add('show');
+  updateSyncUI();
+}
+
+function updateSyncUI() {
+  const setup = document.getElementById('syncSetupView');
+  const dash = document.getElementById('syncDashView');
+  
+  if (GithubSync.isConnected()) {
+    setup.style.display = 'none';
+    dash.style.display = 'block';
+    document.getElementById('syncConnectedRepo').textContent = GithubSync.config.repo;
+  } else {
+    setup.style.display = 'block';
+    dash.style.display = 'none';
+    // Fill current inputs if they exist
+    document.getElementById('syncRepo').value = GithubSync.config.repo;
+    document.getElementById('syncToken').value = GithubSync.config.token;
+  }
+}
+
+function toggleSyncHelp() {
+  const panel = document.getElementById('syncHelp');
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+
+async function connectGithub() {
+  const token = document.getElementById('syncToken').value.trim();
+  const repoInput = document.getElementById('syncRepo');
+  const repoDropdown = document.getElementById('syncRepoDropdown');
+  const repoSelectContainer = document.getElementById('syncRepoSelect');
+
+  if (!token) { toast('Please enter your token'); return; }
+
+  const btn = document.querySelector('#syncSetupView .primary');
+  btn.disabled = true; btn.textContent = 'Verifying...';
+
+  try {
+    // 1. Temporarily save token to test discovery
+    GithubSync.config.token = token;
+
+    // 2. Discover repos if no repo is selected yet
+    if (repoSelectContainer.style.display === 'none' && repoInput.style.display === 'none') {
+      const repos = await GithubSync.fetchAccessibleRepos();
+      
+      if (repos.length === 0) {
+        throw new Error('No repositories found. Ensure your token has "Metadata" (read) and "Contents" permissions.');
+      }
+
+      if (repos.length === 1) {
+        // Magical auto-selection!
+        GithubSync.saveConfig(token, repos[0].full_name);
+        await finishConnection();
+      } else {
+        // Multi-repo: show dropdown
+        repoSelectContainer.style.display = 'block';
+        repoDropdown.innerHTML = repos.map(r => `<option value="${r.full_name}">${r.full_name}</option>`).join('');
+        repoInput.style.display = 'block'; // Also show manual just in case
+        btn.textContent = 'Connect Selected';
+        toast('Multiple repositories found. Please choose one.');
+      }
+    } else {
+      // 3. User has selected or typed a repo
+      const selectedRepo = repoDropdown.style.display !== 'none' && repoDropdown.value 
+        ? repoDropdown.value 
+        : repoInput.value.trim();
+        
+      if (!selectedRepo) throw new Error('Please select or enter a repository name.');
+      
+      GithubSync.saveConfig(token, selectedRepo);
+      await finishConnection();
+    }
+  } catch (e) {
+    GithubSync.clearConfig();
+    alert('Discovery failed: ' + e.message);
+  } finally {
+    btn.disabled = false; 
+    if (btn.textContent === 'Verifying...') btn.textContent = 'Connect';
+  }
+
+  async function finishConnection() {
+    await GithubSync.apiCall(); // Final verification of access to the file/repo
+    updateSyncUI();
+    toast('Connected to GitHub!');
+  }
+}
+async function disconnectGithub() {
+  if (hasUnsavedChanges()) {
+    const choice = confirm('You have unsaved changes. Would you like to save and UPLOAD them before disconnecting?');
+    if (choice) {
+      try {
+        await GithubSync.upload();
+      } catch (e) {
+        if (!confirm('Cloud upload failed. Disconnect anyway?')) return;
+      }
+    }
+  } else {
+    if (!confirm('Disconnect from this repository?')) return;
+  }
+  
+  GithubSync.clearConfig();
+  updateSyncUI();
 }

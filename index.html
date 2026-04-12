@@ -46,8 +46,12 @@
   <!-- Home Screen -->
   <div id="homeScreen" class="home-screen" style="display:none">
     <div class="home-header">
-      <div class="loading-logo" style="margin:0 16px 0 0">Sp</div>
-      <h1 class="home-title">SlidePy</h1>
+      <div style="display:flex; align-items:center;">
+        <div class="loading-logo" style="margin:0 16px 0 0">Sp</div>
+        <h1 class="home-title">SlidePy</h1>
+      </div>
+      <button class="tb-btn" onclick="openSyncModal()"
+        style="font-size:14px; background:var(--bg-card); border:1px solid var(--border)">☁ Sync Library</button>
     </div>
     <p class="home-desc">Your presentations, powered by Python.</p>
     <div class="home-grid" id="homeGrid"></div>
@@ -145,6 +149,7 @@
       <button class="tb-btn" onclick="openPackageEditor()">⚙ Edit Packages</button>
       <div class="tb-sep"></div>
       <button class="tb-btn" onclick="saveCurrentPresentation()">💾 Save</button>
+      <button class="tb-btn" onclick="openSyncModal()">☁ Sync</button>
       <button class="tb-btn" onclick="exportJSON()">📤 Export</button>
       <button class="tb-btn" onclick="triggerLoad()">📂 Load</button>
       <input type="file" id="loadInput" accept=".json,.pyslide" style="display:none" onchange="importJSON(event)">
@@ -253,6 +258,81 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="syncModal">
+    <div class="modal" style="width:400px; max-width:90vw;">
+      <h2 id="syncTitle">Cloud Sync</h2>
+
+      <!-- View 1: Setup -->
+      <div id="syncSetupView" style="display:none">
+        <p class="modal-desc">Enter your GitHub Fine-grained Token. We'll automatically find your repository.</p>
+        <input class="modal-input" id="syncToken" type="password" placeholder="Fine-grained Access Token" autocomplete="off">
+        
+        <div id="syncRepoSelect" style="display:none; margin-bottom:14px;">
+          <p class="modal-desc" style="font-size:12px; margin-bottom:8px">Multiple repositories found. Please select one:</p>
+          <select id="syncRepoDropdown" class="modal-input" style="margin-bottom:0"></select>
+        </div>
+
+        <div class="input-with-help">
+          <input class="modal-input" id="syncRepo" placeholder="Manual Repository (user/repo)" autocomplete="off" style="display:none">
+          <button class="help-btn" onclick="toggleSyncHelp()" title="Setup Instructions">?</button>
+        </div>
+
+        <div id="syncHelp" class="sync-help-panel" style="display:none">
+          <h4>How to set up:</h4>
+          <ol>
+            <li>Create a new repo on GitHub (e.g. <code>my-slides</code>).</li>
+            <li>Go to <b>User-Settings > Developer > Personal tokens > Fine-grained</b>.</li>
+            <li>Generate a token. Under <b>Repository access</b>, select only your new repo.</li>
+            <li>Under <b>Permissions</b>, set <b>Contents</b> to <b>Read/Write</b>.</li>
+            <li>Paste the repo name and token here.</li>
+          </ol>
+        </div>
+
+        <div class="modal-btns">
+          <button class="modal-btn" onclick="closeModal('syncModal')">Cancel</button>
+          <button class="modal-btn primary" onclick="connectGithub()">Connect</button>
+        </div>
+      </div>
+
+      <!-- View 2: Dashboard -->
+      <div id="syncDashView" style="display:none">
+        <div class="sync-status-box">
+          <div class="sync-repo-name" id="syncConnectedRepo">username/repo</div>
+          <div class="sync-status-tag">Connected</div>
+        </div>
+
+        <div class="sync-actions-grid">
+          <button class="sync-action-btn" onclick="GithubSync.upload()">
+            <div class="icon">⤒</div>
+            <div class="label">Upload to Cloud</div>
+          </button>
+          <button class="sync-action-btn" onclick="GithubSync.download()">
+            <div class="icon">⤓</div>
+            <div class="label">Download from Cloud</div>
+          </button>
+        </div>
+
+        <button class="modal-btn" style="width:100%; margin-top:12px; font-size:12px; color:var(--text-muted)"
+          onclick="disconnectGithub()">Change Repository / Disconnect</button>
+
+        <div class="modal-btns" style="margin-top:16px">
+          <button class="modal-btn primary" style="width:100%" onclick="closeModal('syncModal')">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="deleteConfirmModal">
+    <div class="modal" style="width:360px">
+      <h2>Delete Presentation?</h2>
+      <p>This action cannot be undone. Your presentation will be removed from local storage.</p>
+      <div class="modal-btns">
+        <button class="modal-btn" onclick="closeModal('deleteConfirmModal')">Cancel</button>
+        <button class="modal-btn primary" style="background:var(--red); border-color:var(--red)" id="btnConfirmDelete">Delete</button>
+      </div>
+    </div>
+  </div>
+
   <div class="pyodide-status" id="pyStatus">
     <div class="dot"></div><span id="pyStatusText">Loading Python...</span>
   </div>
@@ -312,6 +392,7 @@
   <script src="js/ui.js"></script>
   <script src="js/textEditor.js"></script>
   <script src="js/canvas.js"></script>
+  <script src="js/sync.js"></script>
   <script src="js/home.js"></script>
   <script src="js/python.js"></script>
   <script src="js/app.js"></script>
