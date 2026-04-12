@@ -531,11 +531,11 @@ async function disconnectGithub() {
   if (hasUnsavedChanges()) {
     titleObj.textContent = 'Unsaved Changes';
     msgObj.textContent = 'You have unsaved changes. Would you like to save and UPLOAD them before disconnecting?';
-    btnsObj.innerHTML = \`
+    btnsObj.innerHTML = `
       <button class="modal-btn" onclick="closeModal('disconnectConfirmModal')">Cancel</button>
       <button class="modal-btn" style="background:var(--red); border-color:var(--red)" id="btnDisconnectAnyway">Disconnect Anyway</button>
       <button class="modal-btn primary" id="btnDisconnectUpload">Upload & Disconnect</button>
-    \`;
+    `;
     document.getElementById('btnDisconnectAnyway').onclick = () => {
       closeModal('disconnectConfirmModal');
       finalizeDisconnect();
@@ -550,20 +550,20 @@ async function disconnectGithub() {
         const failedModal = document.getElementById('disconnectConfirmModal');
         document.getElementById('disconnectTitle').textContent = 'Upload Failed';
         document.getElementById('disconnectMsg').textContent = 'Cloud upload failed. Disconnect anyway?';
-        document.getElementById('disconnectBtns').innerHTML = \`
+        document.getElementById('disconnectBtns').innerHTML = `
           <button class="modal-btn" onclick="closeModal('disconnectConfirmModal')">Cancel</button>
           <button class="modal-btn primary" style="background:var(--red); border-color:var(--red)" onclick="closeModal('disconnectConfirmModal'); finalizeDisconnect();">Disconnect</button>
-        \`;
+        `;
         failedModal.classList.add('show');
       }
     };
   } else {
     titleObj.textContent = 'Disconnect Repository?';
     msgObj.textContent = 'Are you sure you want to disconnect from this repository?';
-    btnsObj.innerHTML = \`
+    btnsObj.innerHTML = `
       <button class="modal-btn" onclick="closeModal('disconnectConfirmModal')">Cancel</button>
       <button class="modal-btn primary" style="background:var(--red); border-color:var(--red)" onclick="closeModal('disconnectConfirmModal'); finalizeDisconnect();">Disconnect</button>
-    \`;
+    `;
   }
   modal.classList.add('show');
 }
