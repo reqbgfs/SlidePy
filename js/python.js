@@ -249,3 +249,44 @@ function handlePyUpload(e) { Array.from(e.target.files).forEach(f=>{const r=new 
 function renderUploadedFiles() { const l=document.getElementById('uploadedFilesList'); l.innerHTML=''; Object.keys(uploadedPyFiles).forEach(n=>{const d=document.createElement('div');d.className='uploaded-file-item';d.innerHTML=`<span>🐍 ${escHtml(n)}</span><button onclick="removePyFile('${escHtml(n)}')">✕</button>`;l.appendChild(d);}); }
 function removePyFile(n) { delete uploadedPyFiles[n]; renderUploadedFiles(); toast(`Removed ${n}`); }
 function setupDropZone() { const z=document.getElementById('uploadZone'); if(!z)return; z.ondragover=(e)=>{e.preventDefault();z.style.borderColor='var(--accent)';}; z.ondragleave=()=>{z.style.borderColor='';}; z.ondrop=(e)=>{e.preventDefault();z.style.borderColor='';Array.from(e.dataTransfer.files).filter(f=>f.name.endsWith('.py')).forEach(f=>{const r=new FileReader();r.onload=(re)=>{uploadedPyFiles[f.name]=re.target.result;renderUploadedFiles();toast(`Uploaded ${f.name}`);};r.readAsText(f);});}; }
+
+// ═══════ LINTER ═══════
+window.pythonLinter = function (text, updateLinting, options, cm) {
+  if (!pyReady || !window.pyodide) { updateLinting([]); return; }
+  
+  // Expose text to Pyodide
+  window._lint_text_temp = text;
+  
+  try {
+    const errorsStr = pyodide.runPython(`
+def _get_lint_errors(text):
+    import ast, json
+    try:
+        ast.parse(text)
+        return '[]'
+    except SyntaxError as e:
+        msg = e.msg
+        lineno = e.lineno - 1 if getattr(e, 'lineno', None) is not None else 0
+        offset = e.offset - 1 if getattr(e, 'offset', None) is not None else 0
+        # CM from/to expect line & ch
+        res = [{
+            "message": msg,
+            "severity": "error",
+            "from": {"line": lineno, "ch": offset},
+            "to": {"line": lineno, "ch": offset + 1}
+        }]
+        return json.dumps(res)
+    except Exception:
+        return '[]'
+
+_get_lint_errors(js._lint_text_temp)
+    `);
+    
+    // updateLinting expects the array of annotations
+    updateLinting(JSON.parse(errorsStr));
+  } catch (e) {
+    // Could fail if pyodide is busy executing a cell. Ignore.
+    console.error("Linter error:", e);
+    updateLinting([]);
+  }
+};

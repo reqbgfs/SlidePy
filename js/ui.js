@@ -308,6 +308,8 @@ function renderJupyterEl(w, el, idx) {
     const ee = document.getElementById(`editor_${cmId}`); if (!ee) return;
     const cm = CodeMirror(ee, {
       value: el.code || '', mode: 'python', theme: 'dracula', lineNumbers: true, indentUnit: 4, tabSize: 4, indentWithTabs: false, lineWrapping: true,
+      gutters: ["CodeMirror-lint-markers"],
+      lint: { getAnnotations: window.pythonLinter, async: true },
       extraKeys: { 'Shift-Enter': () => runCell(idx), 'Tab': (cm) => cm.replaceSelection('    ') }
     });
     codeMirrors[cmId] = cm; setTimeout(() => cm.refresh(), 50);

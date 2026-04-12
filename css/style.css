@@ -170,6 +170,10 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg-app); color:var(--t
 @keyframes spin { to { transform:rotate(360deg); } }
 .cell-code-editor { flex:1; overflow:auto; }
 .cell-code-editor .CodeMirror { height:100%; min-height:100px; font-family:'JetBrains Mono',monospace; font-size:11px; line-height:1.6; background:#1a1a28; }
+/* Linting overrides for dark theme */
+.CodeMirror-lint-tooltip { background:var(--bg-panel); border:1px solid var(--border); color:var(--text-primary); border-radius:var(--radius-sm); font-family:'DM Sans',sans-serif; font-size:12px; box-shadow:var(--shadow); z-index:100000; }
+.CodeMirror-lint-marker-error { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23f87171' d='M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0-1A6 6 0 1 0 8 2a6 6 0 0 0 0 12zm-1-5h2v2H7v-2zm0-5h2v4H7V4z'/%3E%3C/svg%3E"); }
+.CodeMirror-lint-mark-error { border-bottom: 1px dashed var(--red); }
 .cell-output-side { flex:4; display:flex; flex-direction:column; min-width:0; }
 .cell-output-header { display:flex; align-items:center; justify-content:space-between; padding:6px 12px; background:rgba(74,222,128,0.06); border-bottom:1px solid var(--border); }
 .cell-output-label { font-size:11px; font-weight:600; color:var(--green); display:flex; align-items:center; gap:6px; }
