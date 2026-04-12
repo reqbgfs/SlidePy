@@ -335,6 +335,29 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="unsavedChangesModal">
+    <div class="modal" style="width:380px">
+      <h2>Unsaved Changes</h2>
+      <p>You have unsaved changes. Would you like to save them before leaving?</p>
+      <div class="modal-btns">
+        <button class="modal-btn" onclick="closeModal('unsavedChangesModal')" id="btnUnsavedCancel">Cancel</button>
+        <button class="modal-btn" style="background:var(--red); border-color:var(--red)" id="btnUnsavedLeave">Leave without saving</button>
+        <button class="modal-btn primary" id="btnUnsavedSave">Save & Leave</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="disconnectConfirmModal">
+    <div class="modal" style="width:380px">
+      <h2 id="disconnectTitle">Disconnect Repository?</h2>
+      <p id="disconnectMsg">Are you sure you want to disconnect from this repository?</p>
+      <div class="modal-btns" id="disconnectBtns">
+        <button class="modal-btn" onclick="closeModal('disconnectConfirmModal')" id="btnDisconnectCancel">Cancel</button>
+        <button class="modal-btn primary" style="background:var(--red); border-color:var(--red)" id="btnDisconnectConfirm">Disconnect</button>
+      </div>
+    </div>
+  </div>
+
   <div class="pyodide-status" id="pyStatus">
     <div class="dot"></div><span id="pyStatusText">Loading Python...</span>
   </div>

@@ -2,7 +2,7 @@
 const STORAGE_KEY = 'slidepy_presentations';
 const PYODIDE_PACKAGES = [
   'math','os','sys','time','json','re','datetime','random','collections','itertools','functools',
-  'beautifulsoup4','matplotlib','micropip','networkx','numpy','pandas','Pillow',
+  'beautifulsoup4','matplotlib','matplotlib.pyplot','micropip','networkx','numpy','pandas','Pillow',
   'scikit-learn','scipy','sympy','opencv-python'
 ];
 const DEFAULT_PACKAGES = [
@@ -135,9 +135,21 @@ function hasUnsavedChanges() {
 
 function goHome() {
   if (hasUnsavedChanges()) {
-    const choice = confirm('You have unsaved changes. Save before leaving?');
-    if (choice) saveCurrentPresentation();
+    const modal = document.getElementById('unsavedChangesModal');
+    document.getElementById('btnUnsavedCancel').onclick = () => closeModal('unsavedChangesModal');
+    document.getElementById('btnUnsavedLeave').onclick = () => { closeModal('unsavedChangesModal'); finalizeGoHome(); };
+    document.getElementById('btnUnsavedSave').onclick = () => {
+      saveCurrentPresentation();
+      closeModal('unsavedChangesModal');
+      finalizeGoHome();
+    };
+    modal.classList.add('show');
+    return;
   }
+  finalizeGoHome();
+}
+
+function finalizeGoHome() {
   // Reset editor state
   activePresentationId = null;
   activePackageConfig = null;
@@ -254,6 +266,15 @@ function wizardNext2() {
   const sel = document.querySelector('.wizard-profile-btn.selected');
   if (!sel) return;
   const profile = sel.dataset.profile;
+  
+  if (profile === 'none') {
+    activePackageConfig = { packages: [] };
+  } else if (profile === 'default') {
+    activePackageConfig = { packages: [...DEFAULT_PACKAGES] };
+  } else if (profile === 'custom') {
+    activePackageConfig = null;
+  }
+
   if (profile === 'custom') {
     renderPackageList();
     showWizardStep(3);
@@ -502,19 +523,52 @@ async function connectGithub() {
   }
 }
 async function disconnectGithub() {
+  const modal = document.getElementById('disconnectConfirmModal');
+  const titleObj = document.getElementById('disconnectTitle');
+  const msgObj = document.getElementById('disconnectMsg');
+  const btnsObj = document.getElementById('disconnectBtns');
+  
   if (hasUnsavedChanges()) {
-    const choice = confirm('You have unsaved changes. Would you like to save and UPLOAD them before disconnecting?');
-    if (choice) {
+    titleObj.textContent = 'Unsaved Changes';
+    msgObj.textContent = 'You have unsaved changes. Would you like to save and UPLOAD them before disconnecting?';
+    btnsObj.innerHTML = \`
+      <button class="modal-btn" onclick="closeModal('disconnectConfirmModal')">Cancel</button>
+      <button class="modal-btn" style="background:var(--red); border-color:var(--red)" id="btnDisconnectAnyway">Disconnect Anyway</button>
+      <button class="modal-btn primary" id="btnDisconnectUpload">Upload & Disconnect</button>
+    \`;
+    document.getElementById('btnDisconnectAnyway').onclick = () => {
+      closeModal('disconnectConfirmModal');
+      finalizeDisconnect();
+    };
+    document.getElementById('btnDisconnectUpload').onclick = async () => {
+      closeModal('disconnectConfirmModal');
       try {
         await GithubSync.upload();
+        finalizeDisconnect();
       } catch (e) {
-        if (!confirm('Cloud upload failed. Disconnect anyway?')) return;
+        // Option to fail if upload failed
+        const failedModal = document.getElementById('disconnectConfirmModal');
+        document.getElementById('disconnectTitle').textContent = 'Upload Failed';
+        document.getElementById('disconnectMsg').textContent = 'Cloud upload failed. Disconnect anyway?';
+        document.getElementById('disconnectBtns').innerHTML = \`
+          <button class="modal-btn" onclick="closeModal('disconnectConfirmModal')">Cancel</button>
+          <button class="modal-btn primary" style="background:var(--red); border-color:var(--red)" onclick="closeModal('disconnectConfirmModal'); finalizeDisconnect();">Disconnect</button>
+        \`;
+        failedModal.classList.add('show');
       }
-    }
+    };
   } else {
-    if (!confirm('Disconnect from this repository?')) return;
+    titleObj.textContent = 'Disconnect Repository?';
+    msgObj.textContent = 'Are you sure you want to disconnect from this repository?';
+    btnsObj.innerHTML = \`
+      <button class="modal-btn" onclick="closeModal('disconnectConfirmModal')">Cancel</button>
+      <button class="modal-btn primary" style="background:var(--red); border-color:var(--red)" onclick="closeModal('disconnectConfirmModal'); finalizeDisconnect();">Disconnect</button>
+    \`;
   }
-  
+  modal.classList.add('show');
+}
+
+function finalizeDisconnect() {
   GithubSync.clearConfig();
   updateSyncUI();
 }
