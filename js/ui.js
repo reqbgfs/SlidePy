@@ -488,16 +488,27 @@ function scalePresentationSlide() {
   canvas.style.transformOrigin = 'center center';
   canvas.style.transform = `scale(${scale})`;
 
-  // Fix: apply inverse scale to the cursor layer only, so net visual scale = 1,
-  // making CSS px == visual px for cursors/selections.
+  // Counter-scale each CodeMirror wrapper so CM operates at 1:1 pixel ratio.
+  // This fixes cursors, selections, AND scrolling all at once.
+  // Enlarge dimensions + font-size by S so the visual result matches the slide.
   setTimeout(() => {
     Object.values(codeMirrors).forEach(cm => {
+      const wrapper = cm.getWrapperElement();
+      const parent = wrapper.parentElement; // .cell-code-editor
+      const pw = parent.offsetWidth;
+      const ph = parent.offsetHeight;
+
+      wrapper.style.transform = `scale(${1 / scale})`;
+      wrapper.style.transformOrigin = '0 0';
+      wrapper.style.fontSize = (11 * scale) + 'px';
+
+      // Enlarge CM so visually it fills the same space after counter-scale
+      cm.setSize(pw * scale, ph * scale);
+      cm.scrollTo(0, 0);
       cm.refresh();
-      const cursorsEl = cm.getWrapperElement().querySelector('.CodeMirror-cursors');
-      if (cursorsEl) {
-        cursorsEl.style.transform = `scale(${1 / scale})`;
-        cursorsEl.style.transformOrigin = '0 0';
-      }
+
+      // Second refresh after reflow to ensure scrollbar recalculation
+      setTimeout(() => cm.refresh(), 150);
     });
   }, 100);
 }
@@ -512,10 +523,14 @@ function stopPresentation() {
     canvas.style.transformOrigin = '';
   }
   
-  // Remove CodeMirror cursor layer counter-transforms
+  // Restore CodeMirror wrappers to original state
   Object.values(codeMirrors).forEach(cm => {
-    const cursorsEl = cm.getWrapperElement().querySelector('.CodeMirror-cursors');
-    if (cursorsEl) { cursorsEl.style.transform = ''; cursorsEl.style.transformOrigin = ''; }
+    const wrapper = cm.getWrapperElement();
+    wrapper.style.transform = '';
+    wrapper.style.transformOrigin = '';
+    wrapper.style.fontSize = '';
+    cm.setSize(null, '100%');
+    cm.refresh();
   });
   
   document.body.classList.remove('presenting');

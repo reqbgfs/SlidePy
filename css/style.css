@@ -175,7 +175,7 @@ body { font-family:'DM Sans',sans-serif; background:var(--bg-app); color:var(--t
 .cell-output-label { font-size:11px; font-weight:600; color:var(--green); display:flex; align-items:center; gap:6px; }
 .clear-output-btn { background:transparent; border:1px solid var(--border); color:var(--text-muted); padding:2px 10px; border-radius:4px; cursor:pointer; font-size:10px; font-weight:600; font-family:'DM Sans',sans-serif; transition:var(--transition); }
 .clear-output-btn:hover { border-color:var(--red); color:var(--red); background:rgba(248,113,113,0.08); }
-.cell-output-content { flex:1; padding:12px; font-family:'JetBrains Mono',monospace; font-size:13px; line-height:1.6; overflow:auto; white-space:pre-wrap; color:var(--text-primary); }
+.cell-output-content { flex:1; padding:12px; font-family:'JetBrains Mono',monospace; font-size:11px; line-height:1.6; overflow:auto; white-space:pre-wrap; color:var(--text-primary); }
 .cell-output-content .error { color:var(--red); }
 .cell-output-content img { max-width:100%; border-radius:var(--radius-sm); margin:4px 0; }
 
@@ -256,6 +256,9 @@ body.presenting .slide-element-free[data-type="jupyter"] { pointer-events:auto; 
 body.presenting .text-element-content { cursor:default; pointer-events: none; user-select: none; }
 body.presenting .text-element-box { height:100% !important; }
 body.presenting .jupyter-cell { height:100% !important; }
+body.presenting .cell-code-side { clip-path:inset(0); }
+body.presenting .cell-code-header { flex-shrink:0; }
+body.presenting .cell-code-editor { min-height:0; overflow:visible !important; }
 body.presenting .present-nav { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); display:flex; gap:8px; background:rgba(22,22,29,0.9); padding:8px 16px; border-radius:30px; border:1px solid var(--border); z-index:10000; opacity:0; transition:opacity 300ms; }
 body.presenting:hover .present-nav { opacity:1; }
 body.presenting .present-nav button { background:var(--bg-hover); border:none; color:var(--text-primary); padding:6px 14px; border-radius:20px; cursor:pointer; font-family:'DM Sans',sans-serif; font-size:13px; transition:var(--transition); }
