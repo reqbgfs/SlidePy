@@ -21,9 +21,11 @@ function moveSlide(i, d) { const n = i + d; if (n < 0 || n >= slides.length) ret
 
 // ═══════ ELEMENTS ═══════
 const elDefaults = { borderColor: '', bgColor: '', borderWidth: 0, _bgHex: '#22222e', _bgAlpha: 0 };
-function addElement(type) {
+function addElement(type, props = {}, initialContent = null) {
   saveUndo();
   const els = slides[currentSlideIdx].elements;
+
+  const finalDefaults = { ...elDefaults, ...props };
 
   const IW = 880, IH = 460, margin = 40, gap = 20;
   const hW = IW / 2, hH = IH / 2;
@@ -168,16 +170,47 @@ function addElement(type) {
     return;
   }
 
-  if (type === 'title') els.push({ type: 'title', content: 'Title', x: sX, y: sY, w: sW, h: sH, ...elDefaults });
-  else if (type === 'subtitle') els.push({ type: 'subtitle', content: 'Subtitle', x: sX, y: sY, w: sW, h: sH, ...elDefaults });
-  else if (type === 'body') els.push({ type: 'body', content: 'Body text', x: sX, y: sY, w: sW, h: sH, ...elDefaults });
-  else if (type === 'image') els.push({ type: 'image', src: '', x: sX, y: sY, w: sW, h: sH, ...elDefaults });
-  else if (type === 'jupyter') els.push({ type: 'jupyter', code: '# Python\n', output: '', x: sX, y: sY, w: sW, h: sH, ...elDefaults });
+  if (type === 'title') els.push({ type: 'title', content: initialContent || 'Title', x: sX, y: sY, w: sW, h: sH, ...finalDefaults });
+  else if (type === 'subtitle') els.push({ type: 'subtitle', content: initialContent || 'Subtitle', x: sX, y: sY, w: sW, h: sH, ...finalDefaults });
+  else if (type === 'body') els.push({ type: 'body', content: initialContent || 'Body text', x: sX, y: sY, w: sW, h: sH, ...finalDefaults });
+  else if (type === 'image') els.push({ type: 'image', src: '', x: sX, y: sY, w: sW, h: sH, ...finalDefaults });
+  else if (type === 'jupyter') els.push({ type: 'jupyter', code: '# Python\n', output: '', x: sX, y: sY, w: sW, h: sH, ...finalDefaults });
 
   selectedElIdx = els.length - 1;
   renderSlide();
 }
 function removeElement(i) { saveUndo(); slides[currentSlideIdx].elements.splice(i, 1); selectedElIdx = -1; renderSlide(); }
+
+function toggleTextDropdown(e) {
+  e.stopPropagation();
+  const d = document.getElementById('textDropdown');
+  if (d) d.classList.toggle('show');
+}
+
+function addAlert(variant) {
+  const styles = {
+    danger: { borderColor: '#f87171', _bgHex: '#f87171', _bgAlpha: 0.15, borderWidth: 2, icon: '❗', label: 'Danger' },
+    success: { borderColor: '#4ade80', _bgHex: '#4ade80', _bgAlpha: 0.15, borderWidth: 2, icon: '✅', label: 'Success' },
+    warning: { borderColor: '#facc15', _bgHex: '#facc15', _bgAlpha: 0.15, borderWidth: 2, icon: '⚠️', label: 'Warning' },
+    info: { borderColor: '#22d3ee', _bgHex: '#22d3ee', _bgAlpha: 0.15, borderWidth: 2, icon: 'ℹ️', label: 'Info' }
+  };
+  const s = styles[variant];
+  const content = `${s.icon} <b style="color:${s.borderColor}">${s.label}</b> ${s.icon}&nbsp; `;
+  addElement('body', { 
+    borderColor: s.borderColor, 
+    _bgHex: s._bgHex, 
+    _bgAlpha: s._bgAlpha, 
+    borderWidth: s.borderWidth,
+    bgColor: hexToRgba(s._bgHex, s._bgAlpha)
+  }, content);
+  const d = document.getElementById('textDropdown');
+  if (d) d.classList.remove('show');
+}
+
+document.addEventListener('click', () => {
+  const d = document.getElementById('textDropdown');
+  if (d) d.classList.remove('show');
+});
 function duplicateElement(i) {
   saveUndo();
   const el = JSON.parse(JSON.stringify(slides[currentSlideIdx].elements[i]));
@@ -188,7 +221,7 @@ function duplicateElement(i) {
 }
 
 function onCanvasMouseDown(e) {
-  if (e.target.id === 'slideCanvas' || e.target.id === 'canvasWrapper') {
+  if (e.target.id === 'slideCanvas' || e.target.id === 'canvasWrapper' || e.target.id === 'workspace') {
     if (selectedElIdx !== -1) { selectedElIdx = -1; renderSlide(); }
   }
 }

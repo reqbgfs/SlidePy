@@ -180,7 +180,16 @@
         <div class="et-group">
           <button class="et-btn" onclick="addElement('title')">+ Title</button>
           <button class="et-btn" onclick="addElement('subtitle')">+ Subtitle</button>
-          <button class="et-btn" onclick="addElement('body')">+ Text</button>
+          <div class="split-btn">
+            <button class="et-btn main-action" onclick="addElement('body')">+ Text</button>
+            <button class="et-btn dropdown-trigger" onclick="toggleTextDropdown(event)" title="Add Alert Box">▾</button>
+            <div class="dropdown-menu" id="textDropdown">
+              <button class="dropdown-item" onclick="addAlert('danger')">❗ Danger Box</button>
+              <button class="dropdown-item" onclick="addAlert('success')">✅ Success Box</button>
+              <button class="dropdown-item" onclick="addAlert('warning')">⚠️ Warning Box</button>
+              <button class="dropdown-item" onclick="addAlert('info')">ℹ️ Info Box</button>
+            </div>
+          </div>
           <button class="et-btn" onclick="addElement('image')">+ Media</button>
         </div>
         <div class="et-sep"></div>
