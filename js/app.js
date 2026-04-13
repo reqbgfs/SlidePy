@@ -1,6 +1,8 @@
 // ═══════ APP INIT ═══════
 
 function init() {
+  migrateAssetsToDB(); // Start one-time migration background task
+
   if (typeof skip_homescreen !== 'undefined' && skip_homescreen) {
     // Skip home screen — go directly to editor with default profile
     document.getElementById('homeScreen').style.display = 'none';
@@ -11,6 +13,7 @@ function init() {
       { type:'subtitle', content:'Presentations powered by Python', x:40, y:184, w:430, h:50, borderColor:'', bgColor:'', borderWidth:0, _bgHex:'#22222e', _bgAlpha:0 }
     ];
     renderSidebar(); renderSlide(); setupDropZone();
+    setTimeout(centerSlide, 10);
     initPyodide(activePackageConfig);
   } else {
     // Show home screen

@@ -13,7 +13,7 @@ function addSlide(type) {
   slides.push(s); currentSlideIdx = slides.length - 1; selectedElIdx = -1;
   renderSidebar(); renderSlide();
 }
-function selectSlide(i) { persistAll(); currentSlideIdx = i; selectedElIdx = -1; renderSidebar(); renderSlide(); }
+function selectSlide(i) { persistAll(); currentSlideIdx = i; selectedElIdx = -1; renderSidebar(); renderSlide(); centerSlide(); }
 function deleteSlide(i) { if (slides.length <= 1) return; saveUndo(); slides.splice(i, 1); if (currentSlideIdx >= slides.length) currentSlideIdx = slides.length - 1; selectedElIdx = -1; renderSidebar(); renderSlide(); }
 function duplicateSlide(i) { saveUndo(); const c = JSON.parse(JSON.stringify(slides[i])); c.id = genId(); slides.splice(i + 1, 0, c); currentSlideIdx = i + 1; renderSidebar(); renderSlide(); }
 function toggleHidden(i) { saveUndo(); slides[i].hidden = !slides[i].hidden; renderSidebar(); renderSlide(); }
@@ -36,6 +36,8 @@ function addElement(type) {
   function collides(x, y, w, h, exclude) {
     for (let e of els) {
       if (exclude && e === exclude) continue;
+      // Multimedia elements are allowed to overlap as backgrounds or layers
+      if (e.type === 'image' || type === 'image') continue;
       const noOverlap = (x + w + gap <= e.x) || (x >= e.x + e.w + gap) ||
         (y + h + gap <= e.y) || (y >= e.y + e.h + gap);
       if (!noOverlap) return true;
@@ -186,7 +188,9 @@ function duplicateElement(i) {
 }
 
 function onCanvasMouseDown(e) {
-  if (e.target.id === 'slideCanvas') { if (selectedElIdx !== -1) { selectedElIdx = -1; renderSlide(); } }
+  if (e.target.id === 'slideCanvas' || e.target.id === 'canvasWrapper') {
+    if (selectedElIdx !== -1) { selectedElIdx = -1; renderSlide(); }
+  }
 }
 
 // ═══════ RENDER ═══════
@@ -214,6 +218,7 @@ function renderSidebar() {
 }
 
 function renderSlide() {
+  updateWorkspaceBounds();
   codeMirrors = {};
   const slide = slides[currentSlideIdx];
   const canvas = document.getElementById('slideCanvas');
@@ -229,7 +234,7 @@ function renderSlide() {
     w.className = 'slide-element-free' + (idx === selectedElIdx ? ' selected' : '');
     w.dataset.elIdx = idx;
     w.dataset.type = el.type;
-    w.style.cssText = `left:${el.x || 0}px;top:${el.y || 0}px;width:${el.w || 300}px;height:${el.h || 80}px;z-index:${idx === selectedElIdx ? 50 : idx + 1};`;
+    w.style.cssText = `left:${el.x || 0}px;top:${el.y || 0}px;width:${el.w || 300}px;height:${el.h || 80}px;z-index:${idx === selectedElIdx ? 1000 : idx + 1};`;
 
     if (idx === selectedElIdx) { const sb = document.createElement('div'); sb.className = 'sel-border'; w.appendChild(sb); }
 
@@ -240,6 +245,12 @@ function renderSlide() {
     dh.innerHTML = '<span class="dots"></span>';
     dh.addEventListener('mousedown', (e) => { e.preventDefault(); selectEl(idx); startDrag(e, idx); });
     w.appendChild(dh);
+
+    // Universal selection click
+    w.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.el-actions-free') || e.target.closest('.resize-handle') || e.target.closest('.drag-header')) return;
+      selectEl(idx);
+    });
 
     // Resize
     const rh = document.createElement('div'); rh.className = 'resize-handle';
@@ -287,16 +298,281 @@ function renderTextEl(w, el, idx, isLight) {
   }
 }
 
+function ensureUtf8(d) {
+  if (typeof d === 'string' && d.startsWith('data:text/html') && !d.includes('charset=utf-8')) {
+    return d.replace('data:text/html', 'data:text/html;charset=utf-8');
+  }
+  return d;
+}
+
+function getMediaType(dataUrl) {
+  if (!dataUrl) return 'image';
+  if (dataUrl.startsWith('data:video/')) return 'video';
+  if (dataUrl.startsWith('data:text/html')) return 'html';
+  return 'image';
+}
+
 function renderImageEl(w, el, idx) {
   const d = document.createElement('div');
   d.className = 'image-element' + (el.src ? ' has-image' : '');
-  if (el.src) d.innerHTML = `<img src="${el.src}">`; else d.innerHTML = '📷 Click to upload';
-  d.onclick = () => {
-    if (el.src) return; const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*';
-    inp.onchange = (ev) => { const f = ev.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = (re) => { slides[currentSlideIdx].elements[idx].src = re.target.result; renderSlide(); }; r.readAsDataURL(f); };
-    inp.click();
-  };
+  
+  // Apply initial styling
+  d.style.boxSizing = 'border-box';
+  d.style.border = (el.borderColor && el.borderWidth) ? `${el.borderWidth}px solid ${el.borderColor}` : 'none';
+  d.style.background = el.bgColor || 'transparent';
+  
+  if (el.src) {
+    const type = getMediaType(el.src);
+    if (type === 'video') {
+      const mode = el.videoMode || 'bg';
+      const v = document.createElement('video');
+      v.src = el.src;
+      v.style.width = '100%'; v.style.height = '100%'; v.style.objectFit = 'contain';
+      if (mode === 'bg') {
+        v.autoplay = true; v.loop = true; v.muted = true; v.playsInline = true;
+      } else {
+        v.controls = true; v.muted = false;
+      }
+      d.appendChild(v);
+    } else if (type === 'html') {
+      const f = document.createElement('iframe');
+      
+      // Inject a margin reset and overflow hidden to prevent internal scrollbars
+      let htmlSrc = ensureUtf8(el.src);
+      const resetStyle = '<style>body{margin:0;padding:0;overflow:hidden;}::-webkit-scrollbar{display:none;}</style>';
+      if (htmlSrc.includes('</head>')) {
+        htmlSrc = htmlSrc.replace('</head>', resetStyle + '</head>');
+      } else if (htmlSrc.includes('<body>')) {
+        htmlSrc = htmlSrc.replace('<body>', '<body>' + resetStyle);
+      } else {
+        htmlSrc = htmlSrc.replace('data:text/html;charset=utf-8,', 'data:text/html;charset=utf-8,' + resetStyle);
+      }
+      
+      f.src = htmlSrc;
+      f.scrolling = "no";
+      f.style.border = 'none';
+      f.sandbox = "allow-scripts allow-popups allow-forms allow-same-origin";
+      
+      // Calculate scale based on box size vs. natural size
+      const naturalW = el.naturalW || 960;
+      const naturalH = el.naturalH || 540;
+      const scale = el.w / naturalW;
+      
+      f.style.width = naturalW + 'px';
+      f.style.height = naturalH + 'px';
+      f.style.transform = `scale(${scale})`;
+      f.style.transformOrigin = '0 0';
+      f.style.position = 'absolute';
+      f.style.top = '0';
+      f.style.left = '0';
+      
+      d.appendChild(f);
+      d.style.position = 'relative'; 
+      d.style.overflow = 'hidden';
+    } else {
+      const img = document.createElement('img');
+      img.src = el.src; d.appendChild(img);
+    }
+  } else {
+    d.innerHTML = '📷 Click to upload';
+  }
+
   w.appendChild(d);
+
+  if (idx === selectedElIdx) {
+    const sp = mkStylePanel(idx, el); w.appendChild(sp);
+    setTimeout(() => sp.classList.add('visible'), 20);
+  }
+
+  d.onclick = () => {
+    if (el.src) return; 
+    openMediaPicker(idx);
+  };
+}
+
+let activePickerElIdx = -1;
+function openMediaPicker(idx) {
+  activePickerElIdx = idx;
+  const filter = document.getElementById('pickerFilter');
+  if (filter) filter.value = 'all';
+  renderPickerGrid('all');
+  document.getElementById('mediaPickerModal').classList.add('show');
+}
+
+function renderPickerGrid(filter) {
+  const container = document.getElementById('pickerGrid');
+  if (!container) return;
+  container.innerHTML = '';
+  
+  const files = Object.values(uploadedFiles).filter(f => {
+    if (!f) return false;
+    const name = f.name.toLowerCase();
+    if (name.endsWith('.py')) return false; 
+    
+    const isImg = /\.(png|jpe?g|gif|webp|bmp|ico)$/i.test(name);
+    const isVid = /\.(mp4|webm|ogg)$/i.test(name);
+    const isHtml = name.endsWith('.html');
+    
+    if (filter === 'image') return isImg;
+    if (filter === 'video') return isVid;
+    if (filter === 'html') return isHtml;
+    return isImg || isVid || isHtml;
+  });
+
+  if (files.length === 0) {
+    container.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding:40px; color:var(--text-muted); font-size:13px;">No fitting assets found in library.</div>';
+    return;
+  }
+
+  files.forEach(f => {
+    const isImg = /\.(png|jpe?g|gif|webp|bmp|ico)$/i.test(f.name);
+    const isVid = /\.(mp4|webm|ogg)$/i.test(f.name);
+    const icon = isImg ? '🖼️' : (isVid ? '🎬' : '🌐');
+    
+    const item = document.createElement('div');
+    item.className = 'picker-item';
+    item.onclick = () => selectPickerAsset(f.name);
+    item.innerHTML = `
+      <div class="picker-item-icon">${icon}</div>
+      <div class="picker-item-name" title="${escHtml(f.name)}">${escHtml(f.name)}</div>
+    `;
+    container.appendChild(item);
+  });
+}
+
+async function selectPickerAsset(name) {
+  const f = uploadedFiles[name];
+  if (!f) return;
+  const el = slides[currentSlideIdx].elements[activePickerElIdx];
+  el.src = f.data;
+  
+  // Auto-fit dimensions
+  try {
+    const dim = await getMediaDimensions(f.data);
+    const aspect = dim.w / dim.h;
+    let targetW = dim.w;
+    let targetH = dim.h;
+    const maxW = 880, maxH = 460;
+    
+    if (targetW > maxW) { targetW = maxW; targetH = targetW / aspect; }
+    if (targetH > maxH) { targetH = maxH; targetW = targetH * aspect; }
+    
+    el.w = Math.round(targetW); 
+    el.h = Math.round(targetH);
+    el.naturalW = dim.w;
+    el.naturalH = dim.h;
+  } catch(e) { console.error("Dim fetch failed", e); }
+
+  const nameL = name.toLowerCase();
+  if (nameL.endsWith('.mp4') || nameL.endsWith('.webm') || nameL.endsWith('.ogg')) {
+    el.videoMode = 'bg';
+  }
+  closeModal('mediaPickerModal');
+  renderSlide();
+}
+
+function getMediaDimensions(src) {
+  return new Promise((resolve, reject) => {
+    const type = getMediaType(src);
+    if (type === 'video') {
+      const v = document.createElement('video'); v.src = src;
+      v.onloadedmetadata = () => resolve({ w: v.videoWidth, h: v.videoHeight });
+      v.onerror = reject;
+    } else if (type === 'html') {
+      try {
+        const decoded = atob(src.split(',')[1]);
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(decoded, 'text/html');
+        let w = null, h = null;
+
+        // 1. Attributes on body/html
+        w = parseInt(doc.body.getAttribute('width')) || parseInt(doc.documentElement.getAttribute('width'));
+        h = parseInt(doc.body.getAttribute('height')) || parseInt(doc.documentElement.getAttribute('height'));
+
+        // 2. Standard Viewport OR custom "dimensions" meta
+        const metaTags = doc.querySelectorAll('meta');
+        metaTags.forEach(m => {
+          const name = m.getAttribute('name') || '';
+          const prop = m.getAttribute('property') || '';
+          const cont = m.getAttribute('content') || '';
+
+          if (name === 'viewport' || name === 'dimensions' || name === 'viewport-width' || name === 'viewport-height') {
+             const mw = cont.match(/width=(\d+)/) || (name.includes('width') ? [0, cont] : null);
+             const mh = cont.match(/height=(\d+)/) || (name.includes('height') ? [0, cont] : null);
+             if (mw && !w) w = parseInt(mw[1]);
+             if (mh && !h) h = parseInt(mh[1]);
+          }
+          // 3. OpenGraph Tags
+          if (prop === 'og:image:width' && !w) w = parseInt(cont);
+          if (prop === 'og:image:height' && !h) h = parseInt(cont);
+        });
+
+        // 4. Data attributes on the first significant div or body
+        const firstDiv = doc.querySelector('div[data-width]');
+        if (firstDiv && !w) {
+          w = parseInt(firstDiv.getAttribute('data-width'));
+          h = parseInt(firstDiv.getAttribute('data-height'));
+        }
+
+        // 5. JSON-LD
+        const jsonLd = doc.querySelector('script[type="application/ld+json"]');
+        if (jsonLd && (!w || !h)) {
+          try {
+            const data = JSON.parse(jsonLd.textContent);
+            if (data.width && !w) w = parseInt(data.width);
+            if (data.height && !h) h = parseInt(data.height);
+          } catch(e) {}
+        }
+        
+        resolve({ w: w || 960, h: h || 540 });
+      } catch(e) {
+        resolve({ w: 960, h: 540 });
+      }
+    } else {
+      const img = new Image();
+      img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+      img.onerror = reject;
+      img.src = src;
+    }
+  });
+}
+
+async function uploadFromPicker() {
+  const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*,video/*,text/html';
+  inp.onchange = async (ev) => {
+    const f = ev.target.files[0]; if (!f) return;
+    let data = await new Promise((resolve) => {
+      const r = new FileReader(); r.onload = (re) => resolve(re.target.result); r.readAsDataURL(f);
+    });
+    const nameL = f.name.toLowerCase();
+    const isHtmlFile = nameL.endsWith('.html');
+    const isVideoFile = nameL.endsWith('.mp4') || nameL.endsWith('.webm') || nameL.endsWith('.ogg');
+    
+    if (isHtmlFile) {
+      if (data.startsWith('data:application/octet-stream')) {
+        data = data.replace('data:application/octet-stream', 'data:text/html');
+      }
+      data = ensureUtf8(data);
+    } else if (isVideoFile) {
+      if (data.startsWith('data:application/octet-stream')) {
+        data = data.replace('data:application/octet-stream', 'data:video/mp4');
+      }
+    }
+    
+    let fileObj = { 
+      name: f.name, 
+      data, 
+      type: (isHtmlFile) ? 'text' : 'binary' 
+    };
+    fileObj = await handleFileConflict(fileObj);
+    if (fileObj) {
+      uploadedFiles[fileObj.name] = fileObj;
+      await selectPickerAsset(fileObj.name);
+      renderUploadedFiles();
+      toast(`Asset uploaded and linked: ${fileObj.name}`);
+    }
+  };
+  inp.click();
 }
 
 function renderJupyterEl(w, el, idx) {
@@ -341,17 +617,53 @@ function mkStylePanel(idx, el) {
       <option value="0.6" ${el._bgAlpha === 0.6 ? 'selected' : ''}>60%</option>
       <option value="0.85" ${el._bgAlpha === 0.85 ? 'selected' : ''}>85%</option>
     </select>
+    <div class="tt-sep"></div>
+    <span class="sp-label">Order</span>
+    <button class="et-btn" onclick="sendToBack(${idx})" title="Send to Back">⏬</button>
+    <button class="et-btn" onclick="bringToFront(${idx})" title="Bring to Front">⏫</button>
   `;
+
+  const mType = el.src ? getMediaType(el.src) : '';
+  if (mType === 'video' || el.videoMode) {
+    p.innerHTML += `
+      <div class="tt-sep"></div>
+      <span class="sp-label">Playback</span>
+      <select class="sp-select" onchange="setVideoMode(${idx},this.value)">
+        <option value="bg" ${el.videoMode === 'bg' || !el.videoMode ? 'selected' : ''}>Cinematic</option>
+        <option value="player" ${el.videoMode === 'player' ? 'selected' : ''}>Player</option>
+      </select>
+    `;
+  }
+
   return p;
 }
+function bringToFront(i) {
+  saveUndo();
+  const els = slides[currentSlideIdx].elements;
+  const [el] = els.splice(i, 1);
+  els.push(el);
+  selectedElIdx = els.length - 1;
+  renderSlide();
+}
+function sendToBack(i) {
+  saveUndo();
+  const els = slides[currentSlideIdx].elements;
+  const [el] = els.splice(i, 1);
+  els.unshift(el);
+  selectedElIdx = 0;
+  renderSlide();
+}
+
+function setVideoMode(i, m) { saveUndo(); slides[currentSlideIdx].elements[i].videoMode = m; renderSlide(); }
 function setBorderColor(i, c) { const el = slides[currentSlideIdx].elements[i]; el.borderColor = c; if (!el.borderWidth) el.borderWidth = 2; applyBoxStyle(i); }
 function setBorderWidth(i, v) { const el = slides[currentSlideIdx].elements[i]; el.borderWidth = parseInt(v); if (!parseInt(v)) el.borderColor = ''; applyBoxStyle(i); }
 function setBgColor(i, hex) { const el = slides[currentSlideIdx].elements[i]; el._bgHex = hex; const a = el._bgAlpha || 0.15; if (!el._bgAlpha) el._bgAlpha = 0.15; el.bgColor = hexToRgba(hex, el._bgAlpha); applyBoxStyle(i); }
 function setBgAlpha(i, a) { const el = slides[currentSlideIdx].elements[i]; el._bgAlpha = parseFloat(a); const hex = el._bgHex || '#22222e'; el.bgColor = parseFloat(a) === 0 ? '' : hexToRgba(hex, parseFloat(a)); applyBoxStyle(i); }
 function applyBoxStyle(i) {
   const el = slides[currentSlideIdx].elements[i];
-  const box = document.querySelector(`[data-el-idx="${i}"] .text-element-box`);
+  const box = document.querySelector(`[data-el-idx="${i}"] .text-element-box, [data-el-idx="${i}"] .image-element`);
   if (!box) return;
+  box.style.boxSizing = 'border-box';
   box.style.border = (el.borderColor && el.borderWidth) ? `${el.borderWidth}px solid ${el.borderColor}` : 'none';
   box.style.background = el.bgColor || 'transparent';
 }
@@ -553,40 +865,182 @@ function pkh(e) {
 function updatePC() { const v = slides.filter(s => !s.hidden); document.getElementById('presentCounter').textContent = `${v.indexOf(slides[presentIdx]) + 1} / ${v.length}`; }
 
 // ═══════ SAVE/LOAD ═══════
-function exportJSON() {
+async function exportJSON() {
   persistAll();
-  const d = {
-    title: document.getElementById('presTitle').value,
+  const zip = new JSZip();
+  const name = document.getElementById('presTitle').value || 'Untitled';
+  
+  const metadata = {
+    title: name,
     slides,
-    uploadedPyFiles,
-    packages: activePackageConfig ? activePackageConfig.packages : DEFAULT_PACKAGES
+    packages: activePackageConfig ? activePackageConfig.packages : DEFAULT_PACKAGES,
+    uploadedFiles: {} 
   };
-  const b = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' });
-  const u = URL.createObjectURL(b);
+  
+  const assetsFolder = zip.folder("assets");
+  
+  for (const fileName in uploadedFiles) {
+    const f = uploadedFiles[fileName];
+    metadata.uploadedFiles[fileName] = { name: f.name, type: f.type };
+    if (f.data && f.data.startsWith('data:')) {
+       const parts = f.data.split(',');
+       const b64 = parts[1];
+       assetsFolder.file(fileName, b64, {base64: true});
+    }
+  }
+  
+  zip.file("slides.json", JSON.stringify(metadata, null, 2));
+  
+  const blob = await zip.generateAsync({type:"blob"});
+  const u = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = u;
-  a.download = (d.title || 'pres').replace(/\s+/g, '_') + '.pyslide';
+  a.download = name.replace(/\s+/g, '_') + '.pyslide.zip';
   a.click();
   URL.revokeObjectURL(u);
-  toast('Exported!');
+  toast('Exported as ZIP!');
 }
 function triggerLoad() { document.getElementById('loadInput').click(); }
-function importJSON(e) {
+async function importJSON(e) {
   const f = e.target.files[0]; if (!f) return;
-  const r = new FileReader();
-  r.onload = (re) => {
-    try {
-      const d = JSON.parse(re.target.result);
-      slides = d.slides || [];
-      uploadedPyFiles = d.uploadedPyFiles || {};
-      document.getElementById('presTitle').value = d.title || 'Untitled';
-      if (d.packages) activePackageConfig = { packages: d.packages };
-      currentSlideIdx = 0; selectedElIdx = -1;
-      activePresentationId = crypto.randomUUID();
-      saveCurrentPresentation();
-      renderSidebar(); renderSlide(); renderUploadedFiles();
-      toast('Loaded!');
-    } catch (err) { toast('Failed to load'); }
-  };
-  r.readAsText(f); e.target.value = '';
+  const fName = f.name.toLowerCase();
+  
+  try {
+    let d;
+    if (fName.endsWith('.zip')) {
+      const zip = await JSZip.loadAsync(f);
+      const slidesData = await zip.file("slides.json").async("string");
+      d = JSON.parse(slidesData);
+      
+      const files = d.uploadedFiles || {};
+      for (const name in files) {
+        const assetFile = zip.file(`assets/${name}`);
+        if (assetFile) {
+          const b64 = await assetFile.async("base64");
+          // Re-encode to DataURL
+          const ext = name.split('.').pop().toLowerCase();
+          let mime = 'image/png';
+          if (ext === 'mp4' || ext === 'webm') mime = `video/${ext}`;
+          else if (ext === 'html') mime = 'text/html';
+          else if (ext === 'jpg' || ext === 'jpeg') mime = 'image/jpeg';
+          
+          files[name].data = `data:${mime};base64,${b64}`;
+          if (mime === 'text/html') files[name].data = ensureUtf8(files[name].data);
+        }
+      }
+      uploadedFiles = files;
+    } else {
+      const text = await f.text();
+      d = JSON.parse(text);
+      uploadedFiles = d.uploadedFiles || d.uploadedPyFiles || {};
+    }
+
+    slides = d.slides || [];
+    document.getElementById('presTitle').value = d.title || 'Untitled';
+    if (d.packages) activePackageConfig = { packages: d.packages };
+    currentSlideIdx = 0; selectedElIdx = -1;
+    activePresentationId = crypto.randomUUID();
+    saveCurrentPresentation();
+    renderSidebar(); renderSlide(); renderUploadedFiles();
+    toast('Loaded!');
+  } catch (err) {
+    console.error(err);
+    toast('Failed to load: ' + err.message);
+  }
+  e.target.value = '';
 }
+function centerSlide() {
+  updateWorkspaceBounds();
+  const wrapper = document.getElementById('canvasWrapper');
+  const workspace = document.getElementById('workspace');
+  if (!wrapper || !workspace) return;
+  
+  // Ensure we get absolute pixel values
+  const rect = workspace.getBoundingClientRect();
+  const wW = rect.width;
+  const wH = rect.height;
+  const cW = wrapper.clientWidth;
+  const cH = wrapper.clientHeight;
+
+  wrapper.scrollLeft = (wW - cW) / 2;
+  wrapper.scrollTop = (wH - cH) / 2;
+}
+
+function setZoom(level) {
+  workspaceZoom = Math.max(0.5, Math.min(2.0, level));
+  const canvas = document.getElementById('slideCanvas');
+  if (canvas) {
+    canvas.style.transform = `scale(${workspaceZoom})`;
+  }
+  const display = document.getElementById('zoomPercent');
+  if (display) {
+    const txt = Math.round(workspaceZoom * 100) + '%';
+    if (display.tagName === 'INPUT') display.value = txt;
+    else display.textContent = txt;
+  }
+  updateWorkspaceBounds();
+}
+
+function handleZoomInput(val) {
+  let num = parseFloat(val.replace('%', ''));
+  if (isNaN(num)) {
+    setZoom(workspaceZoom); // reset
+    return;
+  }
+  setZoom(num / 100);
+}
+
+function zoomIn() { setZoom(workspaceZoom + 0.1); }
+function zoomOut() { setZoom(workspaceZoom - 0.1); }
+function resetZoom() { setZoom(1.0); centerSlide(); }
+
+// Initialization for zoom listeners
+document.addEventListener('DOMContentLoaded', () => {
+    const wrapper = document.getElementById('canvasWrapper');
+    if (wrapper) {
+        wrapper.addEventListener('wheel', (e) => {
+            if (e.ctrlKey) {
+                e.preventDefault();
+                // Reduced sensitivity by scaling the delta
+                const delta = -e.deltaY * 0.001; 
+                setZoom(workspaceZoom + delta);
+                updateWorkspaceBounds();
+            }
+        }, { passive: false });
+    }
+});
+
+function updateWorkspaceBounds() {
+  const slide = (slides && slides[currentSlideIdx]) ? slides[currentSlideIdx] : null;
+  if (!slide || document.body.classList.contains('presenting')) return;
+  
+  // Slide standard bounds
+  let minX = 0, maxX = 960, minY = 0, maxY = 540;
+  
+  // Account for all elements
+  if (slide.elements) {
+    slide.elements.forEach(el => {
+      minX = Math.min(minX, el.x || 0);
+      maxX = Math.max(maxX, (el.x || 0) + (el.w || 0));
+      minY = Math.min(minY, el.y || 0);
+      maxY = Math.max(maxY, (el.y || 0) + (el.h || 0));
+    });
+  }
+  
+  const ws = document.getElementById('workspace');
+  if (ws) {
+    // Safety buffer - reduced for a tighter, more professional feel
+    const margin = 40;
+    
+    // Scale the layout container size along with the zoom
+    // This prevents runaway scrollbars when zooming out
+    const contentW = ((maxX - minX) + margin * 2) * workspaceZoom;
+    const contentH = ((maxY - minY) + margin * 2) * workspaceZoom;
+    
+    ws.style.minWidth = contentW + 'px';
+    ws.style.minHeight = contentH + 'px';
+  }
+}
+
+// Ensure centering on resize
+window.addEventListener('resize', centerSlide);

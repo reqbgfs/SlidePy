@@ -52,6 +52,8 @@ site_pkg = '${sitePackages}'
 os.makedirs(site_pkg, exist_ok=True)
 if site_pkg not in sys.path:
     sys.path.insert(0, site_pkg)
+if os.path.dirname(site_pkg) not in sys.path:
+    sys.path.insert(0, os.path.dirname(site_pkg))
     `);
 
     // Collect unique top-level package names for loadPackage
@@ -154,7 +156,10 @@ import shutil, os
 mount_dir = '/IDBFS/${presId}'
 shutil.rmtree(mount_dir, ignore_errors=True)
 site_pkg = f"{mount_dir}/site-packages"
-os.makedirs(site_pkg, exist_ok=True)
+if site_pkg not in sys.path:
+    sys.path.insert(0, site_pkg)
+if os.path.dirname(site_pkg) not in sys.path:
+    sys.path.insert(0, os.path.dirname(site_pkg))
       `);
       if (lsBar) lsBar.style.width = '20%';
   } catch(e) { console.error('Uninstall failed', e); }
@@ -223,8 +228,34 @@ async function runCell(i) {
   btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Running';
   out.innerHTML='<span style="color:var(--text-muted)">Executing...</span>';
   try {
-    for(const[n,c] of Object.entries(uploadedPyFiles)){const mn=n.replace('.py','');pyodide.runPython(`import types,sys\nmod=types.ModuleType("${mn}")\nexec(${JSON.stringify(c)},mod.__dict__)\nsys.modules["${mn}"]=mod`);}
-    pyodide.runPython(`import sys,io\n_buf=io.StringIO()\nsys.stdout=_buf\nsys.stderr=_buf\ntry:\n  import matplotlib.pyplot as _plt_internal\n  _plt_internal.close('all')\nexcept Exception:\n  pass`);
+    const presId = (typeof activePresentationId !== 'undefined' && activePresentationId) ? activePresentationId : 'default';
+    const baseDir = `/IDBFS/${presId}`;
+    
+    // Sync modified/new files to Pyodide FS
+    for(const[n,f] of Object.entries(uploadedFiles)){
+      if (f.data === '[stored_in_idb]') continue;
+      
+      const fullPath = `${baseDir}/${n}`;
+      if(f.type === 'binary') {
+        try {
+          const parts = f.data.split(',');
+          if (parts.length > 1) {
+            const bytes = base64ToUint8(parts[1]);
+            pyodide.FS.writeFile(fullPath, bytes);
+          }
+        } catch(e) { console.error("Could not write binary to pyodide", n, e); }
+      } else {
+        pyodide.FS.writeFile(fullPath, f.data);
+      }
+      
+      // Auto-import .py files as requested
+      if(n.endsWith('.py')){
+        const mn=n.replace('.py','');
+        pyodide.runPython(`import types,sys\nmod=types.ModuleType("${mn}")\nexec(${JSON.stringify(f.data)},mod.__dict__)\nsys.modules["${mn}"]=mod`);
+      }
+    }
+
+    pyodide.runPython(`import sys,io,os\nos.chdir('${baseDir}')\n_buf=io.StringIO()\nsys.stdout=_buf\nsys.stderr=_buf\ntry:\n  import matplotlib.pyplot as _plt_internal\n  _plt_internal.close('all')\nexcept Exception:\n  pass`);
     await pyodide.runPythonAsync(el.code);
     const hasPlot=pyodide.runPython(`_has_plot=False\ntry:\n  import matplotlib.pyplot as _plt_internal\n  _has_plot=len(_plt_internal.get_fignums())>0\nexcept Exception:\n  pass\n_has_plot`);
     let html=''; const stdout=pyodide.runPython(`_buf.getvalue()`);
@@ -237,6 +268,15 @@ async function runCell(i) {
   btn.disabled=false; btn.innerHTML='▶ Run';
 }
 
+function base64ToUint8(b64) {
+  const binaryString = atob(b64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
 function clearOutput(i) {
   const out=document.getElementById(`output_${i}`);
   if(out) out.innerHTML='<span style="color:var(--text-muted)">Run code to see output...</span>';
@@ -245,11 +285,188 @@ function clearOutput(i) {
 
 // ═══════ UPLOAD ═══════
 function openUploadModal() { document.getElementById('uploadModal').classList.add('show'); }
-function handlePyUpload(e) { Array.from(e.target.files).forEach(f=>{const r=new FileReader();r.onload=(re)=>{uploadedPyFiles[f.name]=re.target.result;renderUploadedFiles();toast(`Uploaded ${f.name}`);};r.readAsText(f);}); e.target.value=''; }
-function renderUploadedFiles() { const l=document.getElementById('uploadedFilesList'); l.innerHTML=''; Object.keys(uploadedPyFiles).forEach(n=>{const d=document.createElement('div');d.className='uploaded-file-item';d.innerHTML=`<span>🐍 ${escHtml(n)}</span><button onclick="removePyFile('${escHtml(n)}')">✕</button>`;l.appendChild(d);}); }
-function removePyFile(n) { delete uploadedPyFiles[n]; renderUploadedFiles(); toast(`Removed ${n}`); }
-function setupDropZone() { const z=document.getElementById('uploadZone'); if(!z)return; z.ondragover=(e)=>{e.preventDefault();z.style.borderColor='var(--accent)';}; z.ondragleave=()=>{z.style.borderColor='';}; z.ondrop=(e)=>{e.preventDefault();z.style.borderColor='';Array.from(e.dataTransfer.files).filter(f=>f.name.endsWith('.py')).forEach(f=>{const r=new FileReader();r.onload=(re)=>{uploadedPyFiles[f.name]=re.target.result;renderUploadedFiles();toast(`Uploaded ${f.name}`);};r.readAsText(f);});}; }
 
+async function handleFileConflict(fileObj) {
+  if (!uploadedFiles[fileObj.name]) return fileObj;
+  
+  return new Promise((resolve) => {
+    const modal = document.getElementById('assetConflictModal');
+    const msg = document.getElementById('conflictMsg');
+    const input = document.getElementById('conflictNewName');
+    
+    msg.textContent = `A file named "${fileObj.name}" already exists in your assets. What would you like to do?`;
+    input.value = fileObj.name;
+    
+    document.getElementById('btnConflictOverwrite').onclick = () => {
+      closeModal('assetConflictModal');
+      resolve(fileObj);
+    };
+    
+    document.getElementById('btnConflictRename').onclick = () => {
+      const newName = input.value.trim();
+      if (!newName) { toast("Please provide a name."); return; }
+      if (uploadedFiles[newName]) { toast("That name also exists."); return; }
+      closeModal('assetConflictModal');
+      fileObj.name = newName;
+      resolve(fileObj);
+    };
+    
+    document.getElementById('btnConflictCancel').onclick = () => {
+      closeModal('assetConflictModal');
+      resolve(null);
+    };
+    
+    modal.classList.add('show');
+  });
+}
+
+async function handleFileUpload(e) {
+  const files = Array.from(e.target.files);
+  for (const f of files) {
+    const isHtml = f.type === 'text/html' || f.name.toLowerCase().endsWith('.html');
+    let data = await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (re) => resolve(re.target.result);
+      if (isBinary || isHtml) reader.readAsDataURL(f);
+      else reader.readAsText(f);
+    });
+    if (isHtml) {
+      if (typeof data === 'string' && data.startsWith('data:text/html') && !data.includes('charset=utf-8')) {
+        data = data.replace('data:text/html', 'data:text/html;charset=utf-8');
+      }
+    }
+
+    let fileObj = { name: f.name, data, type: isBinary ? 'binary' : 'text' };
+    fileObj = await handleFileConflict(fileObj);
+    
+    if (fileObj) {
+      uploadedFiles[fileObj.name] = fileObj;
+      renderUploadedFiles();
+      toast(`Saved ${fileObj.name}`);
+    }
+  }
+  e.target.value = '';
+}
+
+function renderUploadedFiles() {
+  const l = document.getElementById('uploadedFilesList');
+  if(!l) return;
+  l.innerHTML = '';
+  Object.keys(uploadedFiles).forEach(n => {
+    const f = uploadedFiles[n];
+    if (!f) return;
+    const name = f.name || n;
+    const isPy = name.endsWith('.py');
+    const isImg = /\.(png|jpe?g|gif|webp|bmp|ico)$/i.test(name);
+    const isVid = /\.(mp4|webm|ogg)$/i.test(name);
+    const icon = isPy ? '🐍' : (isImg ? '🖼️' : (isVid ? '🎬' : '📄'));
+    
+    const d = document.createElement('div');
+    d.className = 'uploaded-file-item';
+    d.innerHTML = `
+      <span>${icon} ${escHtml(name)}</span>
+      <div style="display:flex; gap:8px;">
+        <button title="Rename" onclick="initiateRename('${escHtml(name)}')">✏️</button>
+        <button title="Delete" onclick="removePyFile('${escHtml(name)}')">✕</button>
+      </div>
+    `;
+    l.appendChild(d);
+  });
+}
+
+function initiateRename(oldName) {
+  const modal = document.getElementById('assetRenameModal');
+  const input = document.getElementById('renameAssetInput');
+  const btn = document.getElementById('btnConfirmRename');
+  
+  input.value = oldName;
+  btn.onclick = () => {
+    const userInput = input.value.trim();
+    if (!userInput) { toast("Name cannot be empty"); return; }
+    
+    // Extension preservation logic
+    const dotIdx = oldName.lastIndexOf('.');
+    const origExt = dotIdx !== -1 ? oldName.substring(dotIdx) : '';
+    
+    let baseName = userInput;
+    const userDotIdx = userInput.lastIndexOf('.');
+    if (userDotIdx !== -1) {
+      baseName = userInput.substring(0, userDotIdx);
+    }
+    
+    const newName = baseName + origExt;
+    
+    if (newName === oldName) { closeModal('assetRenameModal'); return; }
+    if (uploadedFiles[newName]) { toast("A file with that name already exists"); return; }
+    
+    // Update state
+    const fileObj = uploadedFiles[oldName];
+    fileObj.name = newName;
+    uploadedFiles[newName] = fileObj;
+    delete uploadedFiles[oldName];
+    
+    // Update FS
+    const presId = (typeof activePresentationId !== 'undefined' && activePresentationId) ? activePresentationId : 'default';
+    try {
+      if (pyReady && pyodide) {
+        pyodide.FS.rename(`/IDBFS/${presId}/${oldName}`, `/IDBFS/${presId}/${newName}`);
+      }
+    } catch(e) {}
+    
+    closeModal('assetRenameModal');
+    renderUploadedFiles();
+    toast(`Renamed to ${newName}`);
+  };
+  
+  modal.classList.add('show');
+}
+
+function removePyFile(n) {
+  const presId = (typeof activePresentationId !== 'undefined' && activePresentationId) ? activePresentationId : 'default';
+  const fullPath = `/IDBFS/${presId}/${n}`;
+  try {
+    if (pyReady && pyodide) pyodide.FS.unlink(fullPath);
+  } catch(e) {}
+  
+  delete uploadedFiles[n];
+  renderUploadedFiles();
+  toast(`Removed ${n}`);
+}
+
+function setupDropZone() {
+  const z = document.getElementById('uploadZone');
+  if (!z) return;
+  z.ondragover = (e) => { e.preventDefault(); z.style.borderColor = 'var(--accent)'; };
+  z.ondragleave = () => { z.style.borderColor = ''; };
+  z.ondrop = async (e) => {
+    e.preventDefault();
+    z.style.borderColor = '';
+    const files = Array.from(e.dataTransfer.files);
+    for (const f of files) {
+      const isHtml = f.type === 'text/html' || f.name.toLowerCase().endsWith('.html');
+      let data = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (re) => resolve(re.target.result);
+        if (isBinary || isHtml) reader.readAsDataURL(f);
+        else reader.readAsText(f);
+      });
+      if (isHtml) {
+        if (typeof data === 'string' && data.startsWith('data:text/html') && !data.includes('charset=utf-8')) {
+          data = data.replace('data:text/html', 'data:text/html;charset=utf-8');
+        }
+      }
+
+      let fileObj = { name: f.name, data, type: f.type === 'text/html' ? 'text' : (isBinary ? 'binary' : 'text') };
+      fileObj = await handleFileConflict(fileObj);
+      
+      if (fileObj) {
+        uploadedFiles[fileObj.name] = fileObj;
+        renderUploadedFiles();
+        toast(`Saved ${fileObj.name}`);
+      }
+    }
+  };
+}
 // ═══════ LINTER ═══════
 window.pythonLinter = function (text, updateLinting, options, cm) {
   if (!pyReady || !window.pyodide) { updateLinting([]); return; }

@@ -32,9 +32,13 @@ function getRect(el) {
 
 function checkOverlap(testRect, skipIdx) {
   const els = slides[currentSlideIdx].elements;
+  const skipEl = els[skipIdx];
   for (let i = 0; i < els.length; i++) {
     if (i === skipIdx) continue;
-    const r = getRect(els[i]);
+    const e = els[i];
+    // Multimedia elements are allowed to overlap as backgrounds or layers
+    if (e.type === 'image' || (skipEl && skipEl.type === 'image')) continue;
+    const r = getRect(e);
     const overlap = !(testRect.r <= r.l || testRect.l >= r.r || testRect.b <= r.t || testRect.t >= r.b);
     if (overlap) return true;
   }
@@ -203,8 +207,8 @@ function startDrag(e, idx) {
   const el = slides[currentSlideIdx].elements[idx];
   const canvas = document.getElementById('slideCanvas');
   const rect = canvas.getBoundingClientRect();
-  const ox = e.clientX - rect.left - el.x;
-  const oy = e.clientY - rect.top - el.y;
+  const ox = (e.clientX - rect.left) / workspaceZoom - el.x;
+  const oy = (e.clientY - rect.top) / workspaceZoom - el.y;
   const wr = document.querySelector(`[data-el-idx="${idx}"]`);
   
   if(wr) wr.classList.add('dragging-el');
@@ -216,9 +220,14 @@ function startDrag(e, idx) {
   const onMove = (ev) => { 
     clearGuides();
     // Base movement with CANVAS borders limits
-    let targetX = Math.round(Math.max(0, Math.min(CANVAS_W - el.w, ev.clientX - rect.left - ox))); 
-    let targetY = Math.round(Math.max(0, Math.min(CANVAS_H - el.h, ev.clientY - rect.top - oy)));
+    let targetX = Math.round((ev.clientX - rect.left) / workspaceZoom - ox);
+    let targetY = Math.round((ev.clientY - rect.top) / workspaceZoom - oy);
     
+    // Only clamp if not a media box
+    if (el.type !== 'image') {
+      targetX = Math.max(0, Math.min(CANVAS_W - el.w, targetX));
+      targetY = Math.max(0, Math.min(CANVAS_H - el.h, targetY));
+    }    
     // Check Snapping
     const snap = findSnapPos({ l: targetX, r: targetX + el.w, t: targetY, b: targetY + el.h }, idx, null);
     if (snap.snappedX !== null) { targetX = snap.snappedX; showGuide('v', snap.guideX); }
@@ -235,6 +244,7 @@ function startDrag(e, idx) {
   
   const onUp = () => { 
     clearGuides();
+    updateWorkspaceBounds();
     if (wr) wr.classList.remove('dragging-el'); 
     if (canvas) canvas.classList.remove('resizing-mode');
     document.removeEventListener('mousemove', onMove); 
@@ -374,17 +384,32 @@ function startResize(e, idx, corner = 'se') {
     });
 
     if (corner === 'se') {
-      let rawW = sW + (ev.clientX - sX);
-      let rawH = sH + (ev.clientY - sY);
+      let rawW = sW + (ev.clientX - sX) / workspaceZoom;
+      let rawH = sH + (ev.clientY - sY) / workspaceZoom;
       
       let minH = 40;
       if (el.type === 'title') minH = 64;
       if (el.type === 'subtitle') minH = 50;
       if (el.type === 'body') minH = 44;
 
-      let targetW = Math.max(80, Math.min(CANVAS_W - el.x, rawW)); 
-      let targetH = Math.max(minH, Math.min(CANVAS_H - el.y, rawH)); 
-      
+      let targetW = Math.max(80, rawW);
+      let targetH = Math.max(minH, rawH);
+
+      if (el.type !== 'image') {
+        targetW = Math.min(CANVAS_W - el.x, targetW);
+        targetH = Math.min(CANVAS_H - el.y, targetH);
+      }
+      const isMedia = el.type === 'image' && el.src;
+      if (isMedia) {
+        const ratio = sW / sH;
+        if (Math.abs(rawW - sW) > Math.abs(rawH - sH)) {
+          targetH = targetW / ratio;
+          if (targetH > CANVAS_H - el.y) { targetH = CANVAS_H - el.y; targetW = targetH * ratio; }
+        } else {
+          targetW = targetH * ratio;
+          if (targetW > CANVAS_W - el.x) { targetW = CANVAS_W - el.x; targetH = targetW / ratio; }
+        }
+      }      
       // Code cells ONLY resized vertically
       if (el.type === 'jupyter') {
         targetW = sW; // lock width
@@ -394,19 +419,21 @@ function startResize(e, idx, corner = 'se') {
       let targetR = el.x + targetW;
       let targetB = el.y + targetH;
 
-      let orig_h = originalEls[idx].h;
-      originalEls[idx].h = targetH; // A's height expands, hitting vertically spanning elements
-      let pushAmountX = 0;
-      if (el.type !== 'jupyter' && targetW > sW) pushAmountX = targetW - sW;
-      applyCascade(originalEls, slides[currentSlideIdx].elements, idx, 'right', pushAmountX);
-      originalEls[idx].h = orig_h;
-      
-      let orig_w = originalEls[idx].w;
-      originalEls[idx].w = targetW; // A's width expands, hitting horizontally spanning elements
-      let pushAmountY = 0;
-      if (el.type !== 'jupyter' && targetH > sH) pushAmountY = targetH - sH;
-      applyCascade(originalEls, slides[currentSlideIdx].elements, idx, 'down', pushAmountY);
-      originalEls[idx].w = orig_w;
+      if (el.type !== 'image') {
+        let orig_h = originalEls[idx].h;
+        originalEls[idx].h = targetH; 
+        let pushAmountX = 0;
+        if (el.type !== 'jupyter' && targetW > sW) pushAmountX = targetW - sW;
+        applyCascade(originalEls, slides[currentSlideIdx].elements, idx, 'right', pushAmountX);
+        originalEls[idx].h = orig_h;
+        
+        let orig_w = originalEls[idx].w;
+        originalEls[idx].w = targetW; 
+        let pushAmountY = 0;
+        if (el.type !== 'jupyter' && targetH > sH) pushAmountY = targetH - sH;
+        applyCascade(originalEls, slides[currentSlideIdx].elements, idx, 'down', pushAmountY);
+        originalEls[idx].w = orig_w;
+      }
       
       slides[currentSlideIdx].elements.forEach((other, j) => {
         if (j === idx) return;
@@ -418,20 +445,43 @@ function startResize(e, idx, corner = 'se') {
 
       // Check Snapping
       const snap = findSnapPos({ l: el.x, r: el.x + targetW, t: el.y, b: el.y + targetH }, idx, 'se');
-      if (snap.snappedX !== null && el.type !== 'jupyter') { targetW = snap.snappedX - el.x; showGuide('v', snap.guideX); }
-      if (snap.snappedY !== null) { targetH = snap.snappedY - el.y; showGuide('h', snap.guideY); }
-
+      if (isMedia) {
+        const ratio = sW / sH;
+        if (snap.snappedX !== null) {
+          targetW = snap.snappedX - el.x;
+          targetH = targetW / ratio;
+          showGuide('v', snap.guideX);
+        }
+        if (snap.snappedY !== null) {
+          targetH = snap.snappedY - el.y;
+          targetW = targetH * ratio;
+          showGuide('h', snap.guideY);
+        }
+        // If snap pushes it out of slide bounds, clamp and readjust
+        // NO-OP: Clamping removed to allow off-slide media sizing
+      } else {
+        if (snap.snappedX !== null && el.type !== 'jupyter') { targetW = snap.snappedX - el.x; showGuide('v', snap.guideX); }
+        if (snap.snappedY !== null) { targetH = snap.snappedY - el.y; showGuide('h', snap.guideY); }
+      }
       const isOverlap = checkOverlap({ l: el.x, r: el.x + targetW, t: el.y, b: el.y + targetH }, idx);
       
       if (!isOverlap) {
         el.w = targetW;
         el.h = targetH;
-        if (wr) { wr.style.width = el.w + 'px'; wr.style.height = el.h + 'px'; }
+        if (wr) { 
+          wr.style.width = el.w + 'px'; wr.style.height = el.h + 'px'; 
+          // Live scale for HTML widgets
+          const iframe = wr.querySelector('iframe');
+          if (iframe) {
+            const scale = el.w / (el.naturalW || 960);
+            iframe.style.transform = `scale(${scale})`;
+          }
+        }
       }
     } else if (corner === 'nw') {
       // Free scale moving backwards out (Top-Left scale)
-      let dx = ev.clientX - sX;
-      let dy = ev.clientY - sY;
+      let dx = (ev.clientX - sX) / workspaceZoom;
+      let dy = (ev.clientY - sY) / workspaceZoom;
       
       if (el.type === 'jupyter') {
         dx = 0; // lock width logic
@@ -444,36 +494,52 @@ function startResize(e, idx, corner = 'se') {
       let targetW = Math.max(80, sW - dx);
       let targetH = Math.max(minH, sH - dy);
       
-      // Clamp bounds so X and Y don't drift past < 0 logic layout frame limits
-      if (originalX + dx < 0) { dx = -originalX; targetW = sW - dx; }
-      if (originalY + dy < 0) { dy = -originalY; targetH = sH - dy; }
-      
+      // Optional: Clamp bounds for non-media so X and Y don't drift past < 0 logic layout frame limits
+      if (el.type !== 'image') {
+        if (originalX + dx < 0) { dx = -originalX; targetW = sW - dx; }
+        if (originalY + dy < 0) { dy = -originalY; targetH = sH - dy; }
+      }      
       // If width/height collapse to minimum defaults, block axis shifting scaling further
       if (targetW === 80) dx = sW - 80;
       if (targetH === minH) dy = sH - minH;
       
       let targetX = originalX + dx;
       let targetY = originalY + dy;
-      
-      let orig_y = originalEls[idx].y;
-      let orig_h = originalEls[idx].h;
-      originalEls[idx].y = targetY;
-      originalEls[idx].h = targetH;
-      let pushAmountLeft = 0;
-      if (el.type !== 'jupyter' && targetX < originalX) pushAmountLeft = originalX - targetX;
-      applyCascade(originalEls, slides[currentSlideIdx].elements, idx, 'left', pushAmountLeft);
-      originalEls[idx].y = orig_y;
-      originalEls[idx].h = orig_h;
-      
-      let orig_x = originalEls[idx].x;
-      let orig_w = originalEls[idx].w;
-      originalEls[idx].x = targetX;
-      originalEls[idx].w = targetW;
-      let pushAmountUp = 0;
-      if (el.type !== 'jupyter' && targetY < originalY) pushAmountUp = originalY - targetY;
-      applyCascade(originalEls, slides[currentSlideIdx].elements, idx, 'up', pushAmountUp);
-      originalEls[idx].x = orig_x;
-      originalEls[idx].w = orig_w;
+
+      const isMedia = el.type === 'image' && el.src;
+      if (isMedia) {
+        const ratio = sW / sH;
+        if (Math.abs(targetW - sW) > Math.abs(targetH - sH)) {
+          targetH = targetW / ratio;
+          // Maintain the bottom-right corner anchor
+          targetY = (originalY + sH) - targetH;
+        } else {
+          targetW = targetH * ratio;
+          targetX = (originalX + sW) - targetW;
+        }
+        // NO-OP: Clamping removed to allow off-slide media placement/sizing
+      }      
+      if (el.type !== 'image') {
+        let orig_y = originalEls[idx].y;
+        let orig_h = originalEls[idx].h;
+        originalEls[idx].y = targetY;
+        originalEls[idx].h = targetH;
+        let pushAmountLeft = 0;
+        if (el.type !== 'jupyter' && targetX < originalX) pushAmountLeft = originalX - targetX;
+        applyCascade(originalEls, slides[currentSlideIdx].elements, idx, 'left', pushAmountLeft);
+        originalEls[idx].y = orig_y;
+        originalEls[idx].h = orig_h;
+        
+        let orig_x = originalEls[idx].x;
+        let orig_w = originalEls[idx].w;
+        originalEls[idx].x = targetX;
+        originalEls[idx].w = targetW;
+        let pushAmountUp = 0;
+        if (el.type !== 'jupyter' && targetY < originalY) pushAmountUp = originalY - targetY;
+        applyCascade(originalEls, slides[currentSlideIdx].elements, idx, 'up', pushAmountUp);
+        originalEls[idx].x = orig_x;
+        originalEls[idx].w = orig_w;
+      }
       
       slides[currentSlideIdx].elements.forEach((other, j) => {
         if (j === idx) return;
@@ -485,24 +551,48 @@ function startResize(e, idx, corner = 'se') {
       
       // Check Snapping
       const snap = findSnapPos({ l: targetX, r: targetX + targetW, t: targetY, b: targetY + targetH }, idx, 'nw');
-      
-      if (snap.snappedX !== null && el.type !== 'jupyter') { 
-        let newTargetW = targetW + (targetX - snap.snappedX);
-        if (newTargetW >= 80) {
-          targetW = newTargetW; 
-          targetX = snap.snappedX; 
-          showGuide('v', snap.guideX); 
+      if (isMedia) {
+        const ratio = sW / sH;
+        if (snap.snappedX !== null) {
+          let newTargetW = targetW + (targetX - snap.snappedX);
+          if (newTargetW >= 80) {
+            targetW = newTargetW;
+            targetX = snap.snappedX;
+            targetH = targetW / ratio;
+            targetY = (originalY + sH) - targetH;
+            showGuide('v', snap.guideX);
+          }
         }
-      }
-      if (snap.snappedY !== null) { 
-        let newTargetH = targetH + (targetY - snap.snappedY);
-        if (newTargetH >= 40) {
-          targetH = newTargetH; 
-          targetY = snap.snappedY; 
-          showGuide('h', snap.guideY); 
+        if (snap.snappedY !== null) {
+          let newTargetH = targetH + (targetY - snap.snappedY);
+          if (newTargetH >= 40) {
+            targetH = newTargetH;
+            targetY = snap.snappedY;
+            targetW = targetH * ratio;
+            targetX = (originalX + sW) - targetW;
+            showGuide('h', snap.guideY);
+          }
         }
-      }
-      
+        // NO-OP: Clamping removed to allow off-slide media placement/sizing
+
+      } else {
+        if (snap.snappedX !== null && el.type !== 'jupyter') { 
+          let newTargetW = targetW + (targetX - snap.snappedX);
+          if (newTargetW >= 80) {
+            targetW = newTargetW; 
+            targetX = snap.snappedX; 
+            showGuide('v', snap.guideX); 
+          }
+        }
+        if (snap.snappedY !== null) { 
+          let newTargetH = targetH + (targetY - snap.snappedY);
+          if (newTargetH >= 40) {
+            targetH = newTargetH; 
+            targetY = snap.snappedY; 
+            showGuide('h', snap.guideY); 
+          }
+        }
+      }      
       const isOverlap = checkOverlap({ l: targetX, r: targetX + targetW, t: targetY, b: targetY + targetH }, idx);
       if (!isOverlap) {
         el.x = targetX;
@@ -512,6 +602,12 @@ function startResize(e, idx, corner = 'se') {
         if (wr) { 
           wr.style.left = el.x + 'px'; wr.style.top = el.y + 'px'; 
           wr.style.width = el.w + 'px'; wr.style.height = el.h + 'px'; 
+          // Live scale for HTML widgets
+          const iframe = wr.querySelector('iframe');
+          if (iframe) {
+            const scale = el.w / (el.naturalW || 960);
+            iframe.style.transform = `scale(${scale})`;
+          }
         }
       }
     }
@@ -522,6 +618,8 @@ function startResize(e, idx, corner = 'se') {
   
   const onUp = () => { 
     clearGuides();
+    updateWorkspaceBounds();
+    renderSlide(); // Ensure final sync and CM refreshes
     if (canvas) canvas.classList.remove('resizing-mode');
     document.removeEventListener('mousemove', onMove); 
     document.removeEventListener('mouseup', onUp); 

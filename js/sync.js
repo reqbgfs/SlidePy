@@ -5,8 +5,8 @@
 const GithubSync = {
   config: {
     token: localStorage.getItem('slidepy_gh_token') || '',
-    repo: localStorage.getItem('slidepy_gh_repo') || '', // format: 'username/repo'
-    path: 'presentations.json'
+    repo: localStorage.getItem('slidepy_gh_repo') || '', 
+    basePath: 'SlidePyLibrary'
   },
 
   isConnected() {
@@ -30,10 +30,14 @@ const GithubSync = {
   },
 
   async apiCall(endpoint, method = 'GET', body = null) {
-    const baseUrl = `https://api.github.com/repos/${this.config.repo}/contents/${this.config.path}`;
-    // If endpoint is provided, use it instead (for user/repo discovery)
-    const url = endpoint ? `https://api.github.com${endpoint}` : baseUrl;
+    const isFullUrl = endpoint && endpoint.startsWith('https://');
+    let url = isFullUrl ? endpoint : `https://api.github.com/repos/${this.config.repo}/contents/${endpoint || this.config.basePath}`;
     
+    // Discovery fallback for legacy root path if SlidePyLibrary doesn't exist yet
+    if (!endpoint && method === 'GET' && !isFullUrl) {
+      url = `https://api.github.com/repos/${this.config.repo}/contents/${this.config.basePath}`;
+    }
+
     const headers = {
       'Authorization': `Bearer ${this.config.token}`,
       'Accept': 'application/vnd.github.v3+json',
@@ -58,38 +62,64 @@ const GithubSync = {
 
   async upload() {
     if (!this.isConnected()) return;
-    
+    const presId = activePresentationId;
+    if (!presId) { toast('Please open a presentation to sync.'); return; }
+
     try {
-      // 1. Persist local state (only if a presentation is currently open)
-      if (typeof activePresentationId !== 'undefined' && activePresentationId && typeof saveCurrentPresentation === 'function') {
-        saveCurrentPresentation();
-      }
+      // 1. Ensure latest local save (strips DataURLs for metadata, saves payload to IDB)
+      await saveCurrentPresentation();
       
-      // 2. Prepare data
-      const presentations = JSON.parse(localStorage.getItem('slidepy_presentations') || '[]');
-      const jsonStr = JSON.stringify(presentations, null, 2);
-      const content = btoa(unescape(encodeURIComponent(jsonStr)));
+      const list = JSON.parse(localStorage.getItem('slidepy_presentations') || '[]');
+      const meta = list.find(x => x.id === presId);
+      if (!meta) throw new Error("Presentation metadata not found.");
+
+      // Fetch full content from IndexedDB for the actual sync
+      const payload = await AssetDB.getPresentation(presId);
+      if (!payload) throw new Error("Presentation content not found in stable storage.");
+
+      const p = { ...meta, ...payload };
+      const presPath = `${this.config.basePath}/${presId}`;
       
-      // 3. Get existing file for SHA
-      let sha = null;
+      // 2. Sync Slides metadata
+      const slidesContent = btoa(unescape(encodeURIComponent(JSON.stringify(p, null, 2))));
+      let slidesSha = null;
       try {
-        const existing = await this.apiCall();
-        if (existing) sha = existing.sha;
-      } catch (e) {
-        // file might not exist yet, 404 is handled in apiCall
+        const existing = await this.apiCall(`${presPath}/slides.json`);
+        if (existing) slidesSha = existing.sha;
+      } catch(e){}
+
+      await this.apiCall(`${presPath}/slides.json`, 'PUT', {
+        message: `Sync slides: ${p.name}`,
+        content: slidesContent,
+        sha: slidesSha
+      });
+
+      // 3. Sync individual Assets
+      for (const name in uploadedFiles) {
+        const file = uploadedFiles[name];
+        if (!file.data || !file.data.startsWith('data:')) continue;
+
+        const assetPath = `${presPath}/assets/${name}`;
+        let assetSha = null;
+        try {
+          const existing = await this.apiCall(assetPath);
+          if (existing) assetSha = existing.sha;
+        } catch(e){}
+
+        const parts = file.data.split(',');
+        const b64 = parts[1];
+
+        await this.apiCall(assetPath, 'PUT', {
+          message: `Sync asset: ${name}`,
+          content: b64,
+          sha: assetSha
+        });
       }
 
-      // 4. Push update
-      const body = {
-        message: 'Sync presentations from SlidePy',
-        content: content
-      };
-      if (sha) body.sha = sha;
-
-      await this.apiCall(null, 'PUT', body);
-      toast('Cloud backup complete!');
+      toast('Cloud Folder Sync Complete!');
       if (typeof closeModal === 'function') closeModal('syncModal');
     } catch (err) {
+      console.error(err);
       alert('Upload failed: ' + err.message);
     }
   },
@@ -98,29 +128,73 @@ const GithubSync = {
     if (!this.isConnected()) return;
 
     try {
-      // 1. Fetch remote data
-      const remoteFile = await this.apiCall();
-      if (!remoteFile) {
-        toast('No cloud backup found.');
+      toast('Scanning cloud library...');
+      // 1. List presentations directory
+      const items = await this.apiCall(this.config.basePath);
+      if (!items || !Array.isArray(items)) {
+        // Fallback discovery for old single-file sync
+        const legacy = await this.apiCall('presentations.json');
+        if (legacy) {
+          const content = legacy.content.replace(/\s/g, '');
+          const data = JSON.parse(decodeURIComponent(escape(atob(content))));
+          this.finalizeMerge(data);
+          return;
+        }
+        toast('No cloud folders found.');
         return;
       }
 
-      // Strip whitespaces for atob compatibility
-      const cleanedContent = remoteFile.content.replace(/\s/g, '');
-      const remoteData = JSON.parse(decodeURIComponent(escape(atob(cleanedContent))));
-      
-      // 2. Merge with local data (Merge by ID, newest timestamp wins)
-      const localData = JSON.parse(localStorage.getItem('slidepy_presentations') || '[]');
-      const merged = this.mergeLibraries(localData, remoteData);
-      
-      // 3. Save and refresh
-      localStorage.setItem('slidepy_presentations', JSON.stringify(merged));
-      if (typeof renderHomeScreen === 'function') renderHomeScreen();
-      toast('Sync download complete!');
-      if (typeof closeModal === 'function') closeModal('syncModal');
+      const remoteLibrary = [];
+
+      for (const item of items) {
+        if (item.type === 'dir') {
+          try {
+            const slidesFile = await this.apiCall(`${item.path}/slides.json`);
+            if (slidesFile) {
+              const content = slidesFile.content.replace(/\s/g, '');
+              const pres = JSON.parse(decodeURIComponent(escape(atob(content))));
+              
+              // Load asset metadata references
+              const assetsDir = await this.apiCall(`${item.path}/assets`);
+              if (assetsDir && Array.isArray(assetsDir)) {
+                 pres.uploadedFiles = pres.uploadedFiles || {};
+                 for (const assetDoc of assetsDir) {
+                    if (!pres.uploadedFiles[assetDoc.name]) {
+                       pres.uploadedFiles[assetDoc.name] = { name: assetDoc.name, data: '[stored_in_idb]' };
+                    }
+                    // Fetch actual data and store in AssetDB
+                    const assetData = await this.apiCall(assetDoc.path);
+                    if (assetData) {
+                       const ext = assetDoc.name.split('.').pop().toLowerCase();
+                       let mime = 'image/png';
+                       if (ext === 'mp4' || ext === 'webm') mime = `video/${ext}`;
+                       else if (ext === 'html') mime = 'text/html';
+                       const b64 = assetData.content.replace(/\s/g, '');
+                       const dataUrl = `data:${mime};base64,${b64}`;
+                       await AssetDB.saveAsset(assetDoc.name, dataUrl, 'binary');
+                    }
+                 }
+              }
+              remoteLibrary.push(pres);
+            }
+          } catch(e) { console.warn(`Skipping ${item.name}:`, e); }
+        }
+      }
+
+      this.finalizeMerge(remoteLibrary);
     } catch (err) {
+      console.error(err);
       alert('Download failed: ' + err.message);
     }
+  },
+
+  finalizeMerge(remoteData) {
+    const localData = JSON.parse(localStorage.getItem('slidepy_presentations') || '[]');
+    const merged = this.mergeLibraries(localData, remoteData);
+    localStorage.setItem('slidepy_presentations', JSON.stringify(merged));
+    if (typeof renderHomeScreen === 'function') renderHomeScreen();
+    toast('Sync successful!');
+    if (typeof closeModal === 'function') closeModal('syncModal');
   },
 
   mergeLibraries(local, remote) {

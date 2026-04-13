@@ -1,7 +1,8 @@
 // ═══════ STATE ═══════
 var slides = [], currentSlideIdx = 0, pyodide = null, pyReady = false;
-var uploadedPyFiles = {}, codeMirrors = {}, ctxSlideIdx = -1;
+var uploadedFiles = {}, codeMirrors = {}, ctxSlideIdx = -1;
 var undoStack = [], redoStack = [], selectedElIdx = -1;
+var workspaceZoom = 1.0;
 
 function genId() { return 's'+Date.now()+Math.random().toString(36).substr(2,5); }
 

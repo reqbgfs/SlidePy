@@ -147,13 +147,12 @@
       <button class="tb-btn" onclick="undo()">↩ Undo</button>
       <button class="tb-btn" onclick="redo()">↪ Redo</button>
       <div class="tb-sep"></div>
-      <button class="tb-btn" onclick="openUploadModal()">📦 Upload .py</button>
+      <button class="tb-btn" onclick="openUploadModal()">📦 Upload Assets</button>
       <button class="tb-btn" onclick="openPackageEditor()">⚙ Edit Packages</button>
       <div class="tb-sep"></div>
       <button class="tb-btn" onclick="saveCurrentPresentation()">💾 Save</button>
       <button class="tb-btn" onclick="openSyncModal()">☁ Sync</button>
       <button class="tb-btn" onclick="exportJSON()">📤 Export</button>
-      <button class="tb-btn" onclick="triggerLoad()">📂 Load</button>
       <input type="file" id="loadInput" accept=".json,.pyslide" style="display:none" onchange="importJSON(event)">
       <input type="file" id="importHomeFile" accept=".pyslide,.json" style="display:none"
         onchange="importPresentation(event)">
@@ -182,7 +181,7 @@
           <button class="et-btn" onclick="addElement('title')">+ Title</button>
           <button class="et-btn" onclick="addElement('subtitle')">+ Subtitle</button>
           <button class="et-btn" onclick="addElement('body')">+ Text</button>
-          <button class="et-btn" onclick="addElement('image')">+ Image</button>
+          <button class="et-btn" onclick="addElement('image')">+ Media</button>
         </div>
         <div class="et-sep"></div>
         <div class="et-group">
@@ -200,15 +199,33 @@
             <option value="#0f172a">Slate</option>
           </select>
         </div>
+
+        <!-- Python Status Relocated -->
+        <div class="pyodide-status" id="pyStatus">
+          <div class="dot"></div><span id="pyStatusText">Loading...</span>
+        </div>
       </div>
-      <div class="slide-canvas-wrapper" id="canvasWrapper">
-        <div class="slide-canvas" id="slideCanvas" onmousedown="onCanvasMouseDown(event)"></div>
+      <div class="slide-canvas-wrapper" id="canvasWrapper" onmousedown="onCanvasMouseDown(event)">
+        <div class="workspace" id="workspace" onmousedown="onCanvasMouseDown(event)">
+          <div class="slide-canvas" id="slideCanvas" onmousedown="onCanvasMouseDown(event)"></div>
+        </div>
         <div class="present-nav" style="display:none" id="presentNav">
           <button onclick="presentPrev()">← Prev</button>
           <span class="slide-counter" id="presentCounter"></span>
           <button onclick="presentNext()">Next →</button>
           <button onclick="stopPresentation()">✕ Exit</button>
         </div>
+      </div>
+      
+      <!-- ZOOM CONTROLS -->
+      <div class="zoom-controls">
+        <button onclick="zoomOut()" title="Zoom Out">−</button>
+        <input type="text" id="zoomPercent" class="zoom-input" value="100%"
+          onchange="handleZoomInput(this.value)"
+          onkeydown="if(event.key==='Enter')this.blur()"
+          onfocus="this.select()">
+        <button onclick="zoomIn()" title="Zoom In">+</button>
+        <button onclick="resetZoom()" title="Reset (100%)">⟲</button>
       </div>
       <div class="slide-bottom-bar">
         <span class="slide-counter" id="slideCounter">Slide 1 of 1</span>
@@ -248,11 +265,10 @@
 
   <div class="modal-overlay" id="uploadModal">
     <div class="modal">
-      <h2>Upload Python Files</h2>
-      <p>Upload .py files to make them importable in your cells.</p>
-      <div class="upload-zone" id="uploadZone" onclick="document.getElementById('pyFileInput').click()">📁 Click or drag
-        .py files here</div>
-      <input type="file" id="pyFileInput" accept=".py" multiple style="display:none" onchange="handlePyUpload(event)">
+      <h2>Assets & Files</h2>
+      <p>Upload images, scripts, or data files for use in your code cells.</p>
+      <div class="upload-zone" id="uploadZone" onclick="document.getElementById('pyFileInput').click()">📁 Click or drag files here</div>
+      <input type="file" id="pyFileInput" accept=".py,.png,.jpg,.jpeg,.gif,.webp,.bmp,.ico,.csv,.txt" multiple style="display:none" onchange="handleFileUpload(event)">
       <div class="uploaded-files-list" id="uploadedFilesList"></div>
       <div class="modal-btns" style="margin-top:14px">
         <button class="modal-btn" onclick="closeModal('uploadModal')">Close</button>
@@ -267,15 +283,18 @@
       <!-- View 1: Setup -->
       <div id="syncSetupView" style="display:none">
         <p class="modal-desc">Enter your GitHub Fine-grained Token. We'll automatically find your repository.</p>
-        <input class="modal-input" id="syncToken" type="password" placeholder="Fine-grained Access Token" autocomplete="off">
-        
+        <input class="modal-input" id="syncToken" type="password" placeholder="Fine-grained Access Token"
+          autocomplete="off">
+
         <div id="syncRepoSelect" style="display:none; margin-bottom:14px;">
-          <p class="modal-desc" style="font-size:12px; margin-bottom:8px">Multiple repositories found. Please select one:</p>
+          <p class="modal-desc" style="font-size:12px; margin-bottom:8px">Multiple repositories found. Please select
+            one:</p>
           <select id="syncRepoDropdown" class="modal-input" style="margin-bottom:0"></select>
         </div>
 
         <div class="input-with-help">
-          <input class="modal-input" id="syncRepo" placeholder="Manual Repository (user/repo)" autocomplete="off" style="display:none">
+          <input class="modal-input" id="syncRepo" placeholder="Manual Repository (user/repo)" autocomplete="off"
+            style="display:none">
           <button class="help-btn" onclick="toggleSyncHelp()" title="Setup Instructions">?</button>
         </div>
 
@@ -286,7 +305,7 @@
             <li>Go to <b>User-Settings > Developer > Personal tokens > Fine-grained</b>.</li>
             <li>Generate a token. Under <b>Repository access</b>, select only your new repo.</li>
             <li>Under <b>Permissions</b>, set <b>Contents</b> to <b>Read/Write</b>.</li>
-            <li>Paste the repo name and token here.</li>
+            <li>Paste the token here.</li>
           </ol>
         </div>
 
@@ -330,7 +349,8 @@
       <p>This action cannot be undone. Your presentation will be removed from local storage.</p>
       <div class="modal-btns">
         <button class="modal-btn" onclick="closeModal('deleteConfirmModal')">Cancel</button>
-        <button class="modal-btn primary" style="background:var(--red); border-color:var(--red)" id="btnConfirmDelete">Delete</button>
+        <button class="modal-btn primary" style="background:var(--red); border-color:var(--red)"
+          id="btnConfirmDelete">Delete</button>
       </div>
     </div>
   </div>
@@ -341,7 +361,8 @@
       <p>You have unsaved changes. Would you like to save them before leaving?</p>
       <div class="modal-btns">
         <button class="modal-btn" onclick="closeModal('unsavedChangesModal')" id="btnUnsavedCancel">Cancel</button>
-        <button class="modal-btn" style="background:var(--red); border-color:var(--red)" id="btnUnsavedLeave">Leave without saving</button>
+        <button class="modal-btn" style="background:var(--red); border-color:var(--red)" id="btnUnsavedLeave">Leave
+          without saving</button>
         <button class="modal-btn primary" id="btnUnsavedSave">Save & Leave</button>
       </div>
     </div>
@@ -352,15 +373,69 @@
       <h2 id="disconnectTitle">Disconnect Repository?</h2>
       <p id="disconnectMsg">Are you sure you want to disconnect from this repository?</p>
       <div class="modal-btns" id="disconnectBtns">
-        <button class="modal-btn" onclick="closeModal('disconnectConfirmModal')" id="btnDisconnectCancel">Cancel</button>
-        <button class="modal-btn primary" style="background:var(--red); border-color:var(--red)" id="btnDisconnectConfirm">Disconnect</button>
+        <button class="modal-btn" onclick="closeModal('disconnectConfirmModal')"
+          id="btnDisconnectCancel">Cancel</button>
+        <button class="modal-btn primary" style="background:var(--red); border-color:var(--red)"
+          id="btnDisconnectConfirm">Disconnect</button>
       </div>
     </div>
   </div>
 
-  <div class="pyodide-status" id="pyStatus">
-    <div class="dot"></div><span id="pyStatusText">Loading Python...</span>
+  <div class="modal-overlay" id="mediaPickerModal">
+    <div class="modal" style="width:600px; max-width:95vw;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+        <button class="modal-btn primary" onclick="uploadFromPicker()" style="font-size:12px;">📤 Upload from Explorer</button>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:11px; color:var(--text-muted); font-weight:600; text-transform:uppercase;">Filter:</span>
+          <select id="pickerFilter" class="sp-select" onchange="renderPickerGrid(this.value)">
+            <option value="all">All Media</option>
+            <option value="image">Images</option>
+            <option value="video">Videos</option>
+            <option value="html">HTML Widgets</option>
+          </select>
+        </div>
+      </div>
+      <div id="pickerGrid" class="picker-grid">
+        <!-- Asset items will be injected here -->
+      </div>
+      <div class="modal-btns" style="margin-top:20px; border-top:1px solid var(--border); padding-top:16px;">
+        <button class="modal-btn" onclick="closeModal('mediaPickerModal')">Cancel</button>
+      </div>
+    </div>
   </div>
+
+  <div class="modal-overlay" id="assetRenameModal">
+    <div class="modal" style="width:400px">
+      <h2>Rename Asset</h2>
+      <p>Enter a new name for this file. The original extension will be preserved automatically.</p>
+      <div style="margin: 15px 0;">
+        <label style="font-size:12px; color:var(--text-secondary); margin-bottom:5px; display:block;">New Name:</label>
+        <input class="modal-input" id="renameAssetInput" placeholder="New name">
+      </div>
+      <div class="modal-btns">
+        <button class="modal-btn" onclick="closeModal('assetRenameModal')">Cancel</button>
+        <button class="modal-btn primary" id="btnConfirmRename">Rename</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="assetConflictModal">
+    <div class="modal" style="width:400px">
+      <h2>Conflict Detected</h2>
+      <p id="conflictMsg">A file with this name already exists. What would you like to do?</p>
+      <div style="margin: 15px 0;">
+        <label style="font-size:12px; color:var(--text-secondary); margin-bottom:5px; display:block;">New Filename:</label>
+        <input class="modal-input" id="conflictNewName" placeholder="filename.ext">
+      </div>
+      <div class="modal-btns">
+        <button class="modal-btn" onclick="closeModal('assetConflictModal')" id="btnConflictCancel">Cancel</button>
+        <button class="modal-btn" id="btnConflictRename">Rename</button>
+        <button class="modal-btn primary" id="btnConflictOverwrite">Proceed (Overwrite)</button>
+      </div>
+    </div>
+  </div>
+
+
   <div class="toast" id="toast"></div>
 
   <div class="color-palette-widget" id="globalPalette">
@@ -413,7 +488,9 @@
   </div>
 
   <!-- Scripts -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="js/state.js"></script>
+  <script src="js/storage.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/textEditor.js"></script>
   <script src="js/canvas.js"></script>

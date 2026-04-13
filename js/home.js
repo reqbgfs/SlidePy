@@ -50,8 +50,8 @@ function renderHomeScreen() {
     const card = document.createElement('div');
     card.className = 'home-card';
     const date = p.savedAt ? new Date(p.savedAt).toLocaleDateString() : '';
-    const slideCount = (p.slides || []).length;
-    const pkgCount = (p.packages || []).length;
+    const slideCount = p._slideCount !== undefined ? p._slideCount : (p.slides || []).length;
+    const pkgCount = p._pkgCount !== undefined ? p._pkgCount : (p.packages || []).length;
     const storageLabel = GithubSync.isConnected() ? '💾 local + ☁ cloud' : '💾 localStorage';
     card.innerHTML = `
       <div class="home-card-preview"><div class="home-card-preview-text">Sp</div></div>
@@ -70,8 +70,12 @@ function renderHomeScreen() {
 
 function deletePresentation(idx) {
   const btn = document.getElementById('btnConfirmDelete');
-  btn.onclick = () => {
+  btn.onclick = async () => {
     const list = getSavedPresentations();
+    const p = list[idx];
+    if (p && p.id) {
+      await AssetDB.deletePresentation(p.id);
+    }
     list.splice(idx, 1);
     savePresentationsList(list);
     renderHomeScreen();
@@ -81,50 +85,111 @@ function deletePresentation(idx) {
   document.getElementById('deleteConfirmModal').classList.add('show');
 }
 
-function loadPresentation(idx) {
+async function loadPresentation(idx) {
   const list = getSavedPresentations();
-  const p = list[idx];
-  if (!p) return;
+  const meta = list[idx];
+  if (!meta) return;
   
-  if (!p.id) { 
-     p.id = crypto.randomUUID();
-     list[idx] = p;
+  if (!meta.id) { 
+     meta.id = crypto.randomUUID();
+     list[idx] = meta;
      savePresentationsList(list);
   }
-  activePresentationId = p.id;
+  activePresentationId = meta.id;
   
-  slides = p.slides || [];
-  uploadedPyFiles = p.uploadedPyFiles || {};
-  document.getElementById('presTitle').value = p.name || 'Untitled';
+  // Fetch full payload from IndexedDB
+  let payload = await AssetDB.getPresentation(meta.id);
+  
+  // Fallback for presentations that haven't been migrated yet (if any)
+  if (!payload && meta.slides) {
+     payload = {
+       slides: meta.slides,
+       uploadedFiles: meta.uploadedFiles || {},
+       packages: meta.packages || DEFAULT_PACKAGES
+     };
+  }
+
+  if (payload) {
+    slides = payload.slides || [];
+    uploadedFiles = payload.uploadedFiles || {};
+    activePackageConfig = { packages: payload.packages || meta.packages || DEFAULT_PACKAGES };
+    
+    // Re-hydrate uploadedFiles from AssetDB if they are markers
+    for (const name in uploadedFiles) {
+      if (uploadedFiles[name].data === '[stored_in_idb]') {
+        const asset = await AssetDB.getAsset(name);
+        if (asset) uploadedFiles[name].data = asset.data;
+      }
+    }
+  } else {
+    slides = [];
+    uploadedFiles = {};
+    activePackageConfig = { packages: DEFAULT_PACKAGES };
+  }
+
+  document.getElementById('presTitle').value = meta.name || 'Untitled';
   currentSlideIdx = 0; selectedElIdx = -1;
-  activePackageConfig = { packages: p.packages || DEFAULT_PACKAGES };
-  lastSavedSnapshot = JSON.stringify({ slides, title: p.name || 'Untitled' });
+  lastSavedSnapshot = JSON.stringify({ slides, title: meta.name || 'Untitled' });
   document.getElementById('homeScreen').classList.add('hidden');
   setTimeout(() => document.getElementById('homeScreen').style.display = 'none', 600);
   showLoadingAndInit();
+  renderUploadedFiles();
+  setTimeout(centerSlide, 100);
 }
 
-function saveCurrentPresentation() {
-  const list = getSavedPresentations();
-  persistAll();
-  const name = document.getElementById('presTitle').value || 'Untitled';
-  
-  if (!activePresentationId) activePresentationId = crypto.randomUUID();
-  
-  const existing = list.findIndex(p => p.id === activePresentationId);
-  const data = {
-    id: activePresentationId,
-    name,
-    slides: JSON.parse(JSON.stringify(slides)),
-    uploadedPyFiles: { ...uploadedPyFiles },
-    packages: activePackageConfig ? activePackageConfig.packages : DEFAULT_PACKAGES,
-    savedAt: Date.now()
-  };
-  if (existing >= 0) list[existing] = data;
-  else list.push(data);
-  savePresentationsList(list);
-  lastSavedSnapshot = JSON.stringify({ slides, title: name });
-  toast('Presentation saved!');
+async function saveCurrentPresentation() {
+  try {
+    const list = getSavedPresentations();
+    persistAll();
+    const name = document.getElementById('presTitle').value || 'Untitled';
+    
+    if (!activePresentationId) {
+      activePresentationId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : genId();
+    }
+    
+    const existingIdx = list.findIndex(p => p.id === activePresentationId);
+    
+    // 1. Prepare Payload for IndexedDB
+    const metadataFiles = {};
+    for (const fName in uploadedFiles) {
+      const f = uploadedFiles[fName];
+      metadataFiles[fName] = { name: f.name, type: f.type, data: '[stored_in_idb]' };
+      if (f.data && f.data.startsWith('data:')) {
+        await AssetDB.saveAsset(fName, f.data, f.type);
+      }
+    }
+
+    const payload = {
+      slides: JSON.parse(JSON.stringify(slides)),
+      uploadedFiles: metadataFiles,
+      packages: activePackageConfig ? activePackageConfig.packages : DEFAULT_PACKAGES
+    };
+
+    // 2. Save heavy payload to IDB
+    await AssetDB.savePresentation(activePresentationId, payload);
+
+    // 3. Prepare Metadata for LocalStorage (Thin shell)
+    const meta = {
+      id: activePresentationId,
+      name,
+      savedAt: Date.now(),
+      _slideCount: slides.length,
+      _pkgCount: (activePackageConfig ? activePackageConfig.packages : []).length
+    };
+
+    if (existingIdx >= 0) list[existingIdx] = meta;
+    else list.push(meta);
+    savePresentationsList(list);
+    lastSavedSnapshot = JSON.stringify({ slides, title: name });
+    toast('Saved Securely (IDB)');
+  } catch (e) {
+    console.error("Save Operation Failed:", e);
+    toast('Save failed! See console.');
+    // Check if it's a quota error on the fallback
+    if (e.name === 'QuotaExceededError') {
+      alert("Local Storage is full. Please export your work to ZIP to prevent data loss!");
+    }
+  }
 }
 
 function hasUnsavedChanges() {
@@ -154,7 +219,7 @@ function finalizeGoHome() {
   activePresentationId = null;
   activePackageConfig = null;
   lastSavedSnapshot = null;
-  slides = []; uploadedPyFiles = {}; codeMirrors = {};
+  slides = []; uploadedFiles = {}; codeMirrors = {};
   selectedElIdx = -1; currentSlideIdx = 0;
   // Show home screen
   const hs = document.getElementById('homeScreen');
@@ -163,38 +228,100 @@ function finalizeGoHome() {
   renderHomeScreen();
 }
 
-function exportPresentation(idx) {
+async function exportPresentation(idx) {
   const list = getSavedPresentations();
   const p = list[idx];
   if (!p) return;
-  const blob = new Blob([JSON.stringify(p, null, 2)], { type: 'application/json' });
+  
+  const zip = new JSZip();
+  const name = p.name || 'Untitled';
+  
+  // Create a slides.json for the zip
+  const metadata = {
+    title: name,
+    slides: p.slides,
+    packages: p.packages,
+    uploadedFiles: {}
+  };
+  
+  const assetsFolder = zip.folder("assets");
+  const files = p.uploadedFiles || {};
+  
+  for (const fName in files) {
+    metadata.uploadedFiles[fName] = { name: fName, type: files[fName].type };
+    const asset = await AssetDB.getAsset(fName);
+    if (asset && asset.data.startsWith('data:')) {
+       const b64 = asset.data.split(',')[1];
+       assetsFolder.file(fName, b64, {base64: true});
+    }
+  }
+  
+  zip.file("slides.json", JSON.stringify(metadata, null, 2));
+  const blob = await zip.generateAsync({type:"blob"});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = (p.name || 'presentation').replace(/\s+/g, '_') + '.pyslide';
+  a.download = (p.name || 'presentation').replace(/\s+/g, '_') + '.pyslide.zip';
   a.click();
   URL.revokeObjectURL(url);
 }
 
-function importPresentation(event) {
+async function importPresentation(event) {
   const file = event.target.files[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    try {
-      const p = JSON.parse(e.target.result);
-      p.id = crypto.randomUUID(); // force new ID to prevent IDBFS overlap
-      p.savedAt = Date.now();
-      const list = getSavedPresentations();
-      list.push(p);
-      savePresentationsList(list);
-      renderHomeScreen();
-      toast('Imported presentation!');
-    } catch(err) {
-      alert('Invalid presentation file.');
+  
+  const fName = file.name.toLowerCase();
+  
+  try {
+    let p;
+    if (fName.endsWith('.zip')) {
+      const zip = await JSZip.loadAsync(file);
+      const slidesData = await zip.file("slides.json").async("string");
+      p = JSON.parse(slidesData);
+      
+      const files = p.uploadedFiles || {};
+      for (const name in files) {
+        const assetFile = zip.file(`assets/${name}`);
+        if (assetFile) {
+          const b64 = await assetFile.async("base64");
+          const ext = name.split('.').pop().toLowerCase();
+          let mime = 'image/png';
+          if (ext === 'mp4' || ext === 'webm') mime = `video/${ext}`;
+          else if (ext === 'html') mime = 'text/html';
+          else if (ext === 'jpg' || ext === 'jpeg') mime = 'image/jpeg';
+          
+          const dataUrl = `data:${mime};base64,${b64}`;
+          await AssetDB.saveAsset(name, dataUrl, files[name].type || 'binary');
+          files[name].data = '[stored_in_idb]';
+        }
+      }
+      p.uploadedFiles = files;
+    } else {
+      const text = await file.text();
+      p = JSON.parse(text);
+      // Migration for old JSON imports
+      if (p.uploadedFiles) {
+        for (const name in p.uploadedFiles) {
+          const f = p.uploadedFiles[name];
+          if (f.data && f.data.startsWith('data:')) {
+            await AssetDB.saveAsset(name, f.data, f.type || 'binary');
+            f.data = '[stored_in_idb]';
+          }
+        }
+      }
     }
-  };
-  reader.readAsText(file);
+
+    p.id = crypto.randomUUID();
+    p.savedAt = Date.now();
+    const list = getSavedPresentations();
+    list.push(p);
+    savePresentationsList(list);
+    renderHomeScreen();
+    toast('Imported presentation!');
+  } catch(err) {
+    console.error(err);
+    alert('Invalid presentation file: ' + err.message);
+  }
   event.target.value = '';
 }
 
@@ -411,7 +538,7 @@ function wizardFinish() {
   // Setup new presentation
   const name = document.getElementById('wizardName').value.trim() || 'Untitled';
   slides = [];
-  uploadedPyFiles = {};
+  uploadedFiles = {};
   document.getElementById('presTitle').value = name;
   addSlide('title');
   slides[0].elements = [
