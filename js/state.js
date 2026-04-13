@@ -2,7 +2,29 @@
 var slides = [], currentSlideIdx = 0, pyodide = null, pyReady = false;
 var uploadedFiles = {}, codeMirrors = {}, ctxSlideIdx = -1;
 var undoStack = [], redoStack = [], selectedElIdx = -1;
+var selectedLayer = 1, presentStep = 0;
 var workspaceZoom = 1.0;
+
+function parseTiming(str) {
+  if (!str) return { start: 0, end: Infinity };
+  const s = str.trim();
+  if (!s) return { start: 0, end: Infinity };
+  // Case: -2 (hidden after step 2)
+  if (s.startsWith('-')) {
+    const end = parseInt(s.slice(1));
+    return { start: 0, end: isNaN(end) ? Infinity : end };
+  }
+  // Case: 1-3 or 2-
+  if (s.includes('-')) {
+    const parts = s.split('-');
+    const start = parseInt(parts[0]);
+    const end = parts[1] === '' ? Infinity : parseInt(parts[1]);
+    return { start: isNaN(start) ? 0 : start, end: isNaN(end) ? Infinity : end };
+  }
+  // Case: 2 (starts at 2, stays)
+  const start = parseInt(s);
+  return { start: isNaN(start) ? 0 : start, end: Infinity };
+}
 
 function genId() { return 's'+Date.now()+Math.random().toString(36).substr(2,5); }
 

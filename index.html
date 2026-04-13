@@ -166,7 +166,10 @@
   <div class="main-layout">
     <div class="sidebar">
       <div class="sidebar-header">
-        <span>Slides</span>
+        <div style="display:flex; align-items:center; gap:8px">
+          <div style="width:14px"></div>
+          <span>Slides</span>
+        </div>
         <div class="sidebar-actions">
           <button onclick="addSlide('blank')" title="Blank slide">+</button>
           <button onclick="addSlide('title')" title="Title slide">T</button>
@@ -174,6 +177,20 @@
         </div>
       </div>
       <div class="slide-list" id="slideList"></div>
+      <div class="layer-area">
+        <div class="sidebar-header">
+          <div style="display:flex; align-items:center; gap:8px">
+            <div style="width:0px"></div>
+            <input type="checkbox" id="layerToggleAll" class="layer-checkbox" onchange="toggleAllLayers(this.checked)"
+              title="Toggle all layers visibility">
+            <span>Layers</span>
+          </div>
+          <div class="sidebar-actions">
+            <button onclick="addLayer()" title="Add new layer">+</button>
+          </div>
+        </div>
+        <div class="layer-list" id="layerList"></div>
+      </div>
     </div>
     <div class="editor-area">
       <div class="editor-toolbar">
@@ -218,21 +235,25 @@
         <div class="workspace" id="workspace" onmousedown="onCanvasMouseDown(event)">
           <div class="slide-canvas" id="slideCanvas" onmousedown="onCanvasMouseDown(event)"></div>
         </div>
-        <div class="present-nav" style="display:none" id="presentNav">
-          <button onclick="presentPrev()">← Prev</button>
-          <span class="slide-counter" id="presentCounter"></span>
-          <button onclick="presentNext()">Next →</button>
-          <button onclick="stopPresentation()">✕ Exit</button>
+        <div class="present-controls" id="presentControls">
+          <div class="present-nav-trigger" id="presentTrigger">
+            <div class="present-nav-bubble"></div>
+          </div>
+          <div class="present-nav" id="presentNav">
+            <button onclick="presentPrev()">← Prev</button>
+            <span class="slide-counter" id="presentCounter"></span>
+            <button onclick="presentNext()">Next →</button>
+            <button onclick="stopPresentation()">✕ Exit</button>
+          </div>
         </div>
       </div>
-      
+
+      <div class="present-indicator" id="presentIndicator"></div>
       <!-- ZOOM CONTROLS -->
       <div class="zoom-controls">
         <button onclick="zoomOut()" title="Zoom Out">−</button>
-        <input type="text" id="zoomPercent" class="zoom-input" value="100%"
-          onchange="handleZoomInput(this.value)"
-          onkeydown="if(event.key==='Enter')this.blur()"
-          onfocus="this.select()">
+        <input type="text" id="zoomPercent" class="zoom-input" value="100%" onchange="handleZoomInput(this.value)"
+          onkeydown="if(event.key==='Enter')this.blur()" onfocus="this.select()">
         <button onclick="zoomIn()" title="Zoom In">+</button>
         <button onclick="resetZoom()" title="Reset (100%)">⟲</button>
       </div>
@@ -246,10 +267,7 @@
     <button class="ctx-item" onclick="ctxAction('duplicate')">📋 Duplicate Slide</button>
     <button class="ctx-item" onclick="ctxAction('hide')">👁 Toggle Hidden</button>
     <div class="ctx-sep"></div>
-    <button class="ctx-item" onclick="ctxAction('moveUp')">⬆ Move Up</button>
-    <button class="ctx-item" onclick="ctxAction('moveDown')">⬇ Move Down</button>
-    <div class="ctx-sep"></div>
-    <button class="ctx-item danger" onclick="ctxAction('delete')">🗑 Delete Slide</button>
+    <button class="ctx-item danger" onclick="ctxAction('delete')">🗑️ Delete Slide</button>
   </div>
 
   <div class="modal-overlay" id="shareModal">
@@ -276,8 +294,10 @@
     <div class="modal">
       <h2>Assets & Files</h2>
       <p>Upload images, scripts, or data files for use in your code cells.</p>
-      <div class="upload-zone" id="uploadZone" onclick="document.getElementById('pyFileInput').click()">📁 Click or drag files here</div>
-      <input type="file" id="pyFileInput" accept=".py,.png,.jpg,.jpeg,.gif,.webp,.bmp,.ico,.csv,.txt" multiple style="display:none" onchange="handleFileUpload(event)">
+      <div class="upload-zone" id="uploadZone" onclick="document.getElementById('pyFileInput').click()">📁 Click or drag
+        files here</div>
+      <input type="file" id="pyFileInput" accept=".py,.png,.jpg,.jpeg,.gif,.webp,.bmp,.ico,.csv,.txt" multiple
+        style="display:none" onchange="handleFileUpload(event)">
       <div class="uploaded-files-list" id="uploadedFilesList"></div>
       <div class="modal-btns" style="margin-top:14px">
         <button class="modal-btn" onclick="closeModal('uploadModal')">Close</button>
@@ -393,9 +413,11 @@
   <div class="modal-overlay" id="mediaPickerModal">
     <div class="modal" style="width:600px; max-width:95vw;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
-        <button class="modal-btn primary" onclick="uploadFromPicker()" style="font-size:12px;">📤 Upload from Explorer</button>
+        <button class="modal-btn primary" onclick="uploadFromPicker()" style="font-size:12px;">📤 Upload from
+          Explorer</button>
         <div style="display:flex; align-items:center; gap:8px;">
-          <span style="font-size:11px; color:var(--text-muted); font-weight:600; text-transform:uppercase;">Filter:</span>
+          <span
+            style="font-size:11px; color:var(--text-muted); font-weight:600; text-transform:uppercase;">Filter:</span>
           <select id="pickerFilter" class="sp-select" onchange="renderPickerGrid(this.value)">
             <option value="all">All Media</option>
             <option value="image">Images</option>
@@ -433,7 +455,8 @@
       <h2>Conflict Detected</h2>
       <p id="conflictMsg">A file with this name already exists. What would you like to do?</p>
       <div style="margin: 15px 0;">
-        <label style="font-size:12px; color:var(--text-secondary); margin-bottom:5px; display:block;">New Filename:</label>
+        <label style="font-size:12px; color:var(--text-secondary); margin-bottom:5px; display:block;">New
+          Filename:</label>
         <input class="modal-input" id="conflictNewName" placeholder="filename.ext">
       </div>
       <div class="modal-btns">
@@ -494,6 +517,23 @@
       <button class="cp-btn" onclick="closeColorPalette()">✕</button>
     </div>
     <input type="color" id="paletteNativeInput" style="display:none" onchange="applyPaletteColor(this.value)">
+  </div>
+
+  <!-- Confirm Modal -->
+  <div class="modal-overlay" id="confirmOverlay">
+    <div class="modal-card confirm-modal">
+      <div class="modal-header">
+        <span id="confirmTitle">Confirm Action</span>
+        <button class="modal-close" onclick="closeConfirm(false)">✕</button>
+      </div>
+      <div class="modal-body">
+        <p id="confirmMessage">Are you sure?</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="confirmCancelBtn" onclick="closeConfirm(false)">Cancel</button>
+        <button class="btn-primary" id="confirmOkBtn" onclick="closeConfirm(true)">Confirm</button>
+      </div>
+    </div>
   </div>
 
   <!-- Scripts -->

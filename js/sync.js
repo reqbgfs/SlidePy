@@ -120,7 +120,7 @@ const GithubSync = {
       if (typeof closeModal === 'function') closeModal('syncModal');
     } catch (err) {
       console.error(err);
-      alert('Upload failed: ' + err.message);
+      showAlert('Upload Failed', err.message);
     }
   },
 
@@ -184,7 +184,7 @@ const GithubSync = {
       this.finalizeMerge(remoteLibrary);
     } catch (err) {
       console.error(err);
-      alert('Download failed: ' + err.message);
+      showAlert('Download Failed', err.message);
     }
   },
 

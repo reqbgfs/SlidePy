@@ -7,6 +7,7 @@ const ELEMENT_GAP = 20;
 
 function selectEl(idx) { 
   if(selectedElIdx!==idx){ 
+    if (typeof closeColorPalette === 'function') closeColorPalette();
     persistAll(); 
     selectedElIdx=idx; 
     renderSlide(); 
@@ -33,9 +34,11 @@ function getRect(el) {
 function checkOverlap(testRect, skipIdx) {
   const els = slides[currentSlideIdx].elements;
   const skipEl = els[skipIdx];
+  const skipLevel = skipEl ? (skipEl.level !== undefined ? skipEl.level : 1) : 1;
   for (let i = 0; i < els.length; i++) {
     if (i === skipIdx) continue;
     const e = els[i];
+    if ((e.level !== undefined ? e.level : 1) !== skipLevel) continue;
     // Multimedia elements are allowed to overlap as backgrounds or layers
     if (e.type === 'image' || (skipEl && skipEl.type === 'image')) continue;
     const r = getRect(e);
@@ -263,8 +266,9 @@ function getSlackGraph(els, dir, skipIdx) {
     for (let v = 0; v < N; v++) {
       if (u === v || v === skipIdx) continue;
       
-      let elU = els[u];
-      let elV = els[v];
+      const elU = els[u];
+      const elV = els[v];
+      if ((elU.level !== undefined ? elU.level : 1) !== (elV.level !== undefined ? elV.level : 1)) continue;
       
       if (dir === 'right') {
         if (!(elU.y >= elV.y + elV.h || elU.y + elU.h <= elV.y)) {

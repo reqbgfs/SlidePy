@@ -1,14 +1,14 @@
 // ═══════ SLIDES ═══════
 function addSlide(type) {
   saveUndo();
-  const s = { id: genId(), type, elements: [], bg: '#1c1c26', hidden: false };
+  const s = { id: genId(), type, elements: [], bg: '#1c1c26', hidden: false, layers: [0, 1], hiddenLayers: [] };
   if (type === 'title') {
     s.elements = [
-      { type: 'title', content: 'Click to add title', x: 40, y: 140, w: 440, h: 90, borderColor: '', bgColor: '', borderWidth: 0, _bgHex: '#22222e', _bgAlpha: 0 },
-      { type: 'subtitle', content: 'Click to add subtitle', x: 40, y: 250, w: 440, h: 50, borderColor: '', bgColor: '', borderWidth: 0, _bgHex: '#22222e', _bgAlpha: 0 }
+      { type: 'title', content: 'Click to add title', x: 40, y: 140, w: 440, h: 90, borderColor: '', bgColor: '', borderWidth: 0, _bgHex: '#22222e', _bgAlpha: 0, level: 1 },
+      { type: 'subtitle', content: 'Click to add subtitle', x: 40, y: 250, w: 440, h: 50, borderColor: '', bgColor: '', borderWidth: 0, _bgHex: '#22222e', _bgAlpha: 0, level: 1 }
     ];
   } else if (type === 'jupyter') {
-    s.elements = [{ type: 'jupyter', code: '# Python here\nprint("Hello!")', output: '', x: 40, y: 40, w: 880, h: 460, borderColor: '', bgColor: '', borderWidth: 0, _bgHex: '#22222e', _bgAlpha: 0 }];
+    s.elements = [{ type: 'jupyter', code: '# Python here\nprint("Hello!")', output: '', x: 40, y: 40, w: 880, h: 460, borderColor: '', bgColor: '', borderWidth: 0, _bgHex: '#22222e', _bgAlpha: 0, level: 1 }];
   }
   slides.push(s); currentSlideIdx = slides.length - 1; selectedElIdx = -1;
   renderSidebar(); renderSlide();
@@ -20,12 +20,13 @@ function toggleHidden(i) { saveUndo(); slides[i].hidden = !slides[i].hidden; ren
 function moveSlide(i, d) { const n = i + d; if (n < 0 || n >= slides.length) return; saveUndo();[slides[i], slides[n]] = [slides[n], slides[i]]; currentSlideIdx = n; renderSidebar(); renderSlide(); }
 
 // ═══════ ELEMENTS ═══════
-const elDefaults = { borderColor: '', bgColor: '', borderWidth: 0, _bgHex: '#22222e', _bgAlpha: 0 };
+const elDefaults = { borderColor: '', bgColor: '', borderWidth: 0, _bgHex: '#22222e', _bgAlpha: 0, level: 1 };
 function addElement(type, props = {}, initialContent = null) {
   saveUndo();
   const els = slides[currentSlideIdx].elements;
 
-  const finalDefaults = { ...elDefaults, ...props };
+  const spawnLevel = (props.level !== undefined) ? props.level : selectedLayer;
+  const finalDefaults = { ...elDefaults, level: spawnLevel, ...props };
 
   const IW = 880, IH = 460, margin = 40, gap = 20;
   const hW = IW / 2, hH = IH / 2;
@@ -38,8 +39,8 @@ function addElement(type, props = {}, initialContent = null) {
   function collides(x, y, w, h, exclude) {
     for (let e of els) {
       if (exclude && e === exclude) continue;
-      // Multimedia elements are allowed to overlap as backgrounds or layers
-      if (e.type === 'image' || type === 'image') continue;
+      if ((e.level !== undefined ? e.level : 1) !== spawnLevel) continue;
+      
       const noOverlap = (x + w + gap <= e.x) || (x >= e.x + e.w + gap) ||
         (y + h + gap <= e.y) || (y >= e.y + e.h + gap);
       if (!noOverlap) return true;
@@ -104,17 +105,17 @@ function addElement(type, props = {}, initialContent = null) {
     let rightRect = { x: margin + hW + 10, y: margin, w: dW, h: IH };
     let leftRect = { x: margin, y: margin, w: dW, h: IH };
 
-    if (!collides(rightRect.x, rightRect.y, rightRect.w, rightRect.h)) {
-      sX = rightRect.x; sY = rightRect.y; sW = rightRect.w; sH = rightRect.h;
-    } else if (!collides(leftRect.x, leftRect.y, leftRect.w, leftRect.h)) {
+    if (!collides(leftRect.x, leftRect.y, leftRect.w, leftRect.h)) {
       sX = leftRect.x; sY = leftRect.y; sW = leftRect.w; sH = leftRect.h;
+    } else if (!collides(rightRect.x, rightRect.y, rightRect.w, rightRect.h)) {
+      sX = rightRect.x; sY = rightRect.y; sW = rightRect.w; sH = rightRect.h;
     } else {
       let qH = Math.floor((IH - gap) / 2);
       let tr = { x: margin + hW + 10, y: margin, w: dW, h: qH };
       let br = { x: margin + hW + 10, y: margin + qH + gap, w: dW, h: qH };
       let tl = { x: margin, y: margin, w: dW, h: qH };
       let bl = { x: margin, y: margin + qH + gap, w: dW, h: qH };
-      let qs = [tr, br, tl, bl];
+      let qs = [tl, bl, tr, br];
       let foundQ = false;
       for (let q of qs) {
         if (!collides(q.x, q.y, q.w, q.h)) {
@@ -129,7 +130,7 @@ function addElement(type, props = {}, initialContent = null) {
       if (!foundQ) {
         let cw = 205, ch = 100;
         let found = false;
-        for (let c = 3; c >= 0; c--) {
+        for (let c = 0; c < 4; c++) {
           for (let r = 0; r < 4; r++) {
             let x16 = margin + c * (cw + gap);
             let y16 = margin + r * (ch + gap);
@@ -166,7 +167,7 @@ function addElement(type, props = {}, initialContent = null) {
   }
 
   if (sX === -1) {
-    toast("Not enough space to add cell. Please resize existing cells or create a new slide.");
+    showAlert("No Space Found", "No space found for this element on the current layer. Try selecting another layer or moving existing elements.");
     return;
   }
 
@@ -222,7 +223,11 @@ function duplicateElement(i) {
 
 function onCanvasMouseDown(e) {
   if (e.target.id === 'slideCanvas' || e.target.id === 'canvasWrapper' || e.target.id === 'workspace') {
-    if (selectedElIdx !== -1) { selectedElIdx = -1; renderSlide(); }
+    if (selectedElIdx !== -1) { 
+      if (typeof closeColorPalette === 'function') closeColorPalette();
+      selectedElIdx = -1; 
+      renderSlide(); 
+    }
   }
 }
 
@@ -244,10 +249,23 @@ function renderSidebar() {
     let preview = '';
     const te = s.elements.find(e => e.type === 'title');
     if (te) preview = te.content.replace(/<[^>]+>/g, ''); else if (hasPy) preview = '🐍 Python Slide'; else preview = 'Blank Slide';
-    t.innerHTML = `<span class="slide-thumb-num">${i + 1}</span><span class="slide-thumb-preview">${escHtml(preview)}</span><span class="slide-thumb-icons">${hasPy ? '<span class="badge badge-py">PY</span>' : ''}${s.hidden ? '<span class="badge badge-hidden">H</span>' : ''}</span><button class="slide-ctx-menu" onclick="event.stopPropagation();showCtxMenu(event,${i})">⋯</button>`;
+    t.innerHTML = `
+      <span class="slide-thumb-num">${i + 1}</span>
+      <div class="slide-thumb-preview">${escHtml(preview)}</div>
+      <div class="slide-thumb-icons">
+        ${hasPy ? '<span class="badge badge-py">PY</span>' : ''}
+        ${s.hidden ? '<span class="badge badge-hidden">H</span>' : ''}
+      </div>
+      <div class="slide-thumb-actions">
+        <button class="slide-action-btn" title="Move Up" onclick="event.stopPropagation();moveSlide(${i},-1)" ${i === 0 ? 'disabled' : ''}>▲</button>
+        <button class="slide-action-btn" title="Move Down" onclick="event.stopPropagation();moveSlide(${i},1)" ${i === slides.length - 1 ? 'disabled' : ''}>▼</button>
+        <button class="slide-ctx-menu-btn" title="Options" onclick="event.stopPropagation();showCtxMenu(event,${i})">⋯</button>
+      </div>
+    `;
     list.appendChild(t);
   });
   document.getElementById('slideCounter').textContent = `Slide ${currentSlideIdx + 1} of ${slides.length}`;
+  renderLayerList();
 }
 
 function renderSlide() {
@@ -256,6 +274,12 @@ function renderSlide() {
   const slide = slides[currentSlideIdx];
   const canvas = document.getElementById('slideCanvas');
   canvas.style.background = slide.bg; canvas.innerHTML = '';
+
+  if (document.body.classList.contains('presenting')) updatePC();
+  
+  const layerSeq = slide.layers || [0, 1];
+  const hiddenLevels = slide.hiddenLayers || [];
+
   if (slide.hidden && !document.body.classList.contains('presenting')) {
     const b = document.createElement('div');
     b.style.cssText = 'position:absolute;top:12px;right:12px;background:rgba(248,113,113,0.15);color:var(--red);font-size:11px;font-weight:700;padding:3px 10px;border-radius:4px;z-index:200;';
@@ -263,11 +287,68 @@ function renderSlide() {
   }
   const isLight = isLightColor(slide.bg);
   slide.elements.forEach((el, idx) => {
+    const lvl = el.level !== undefined ? parseInt(el.level) : 1;
+    if (hiddenLevels.some(h => parseInt(h) === lvl)) return;
+
     const w = document.createElement('div');
     w.className = 'slide-element-free' + (idx === selectedElIdx ? ' selected' : '');
     w.dataset.elIdx = idx;
     w.dataset.type = el.type;
-    w.style.cssText = `left:${el.x || 0}px;top:${el.y || 0}px;width:${el.w || 300}px;height:${el.h || 80}px;z-index:${idx === selectedElIdx ? 1000 : idx + 1};`;
+    
+    const layerPriority = layerSeq.indexOf(lvl);
+    
+    // Presentation Mode Animation Logic
+    const isPresenting = document.body.classList.contains('presenting');
+    let isAbove = true;
+    let animZ = 50 + (layerPriority === -1 ? 0 : layerPriority);
+    let transform = 'translate(0,0)';
+
+    if (isPresenting) {
+      if (lvl === 0) {
+        isAbove = true;
+      } else {
+        const timingStr = (slide.layerTiming && slide.layerTiming[lvl]) || '0-';
+        const range = parseTiming(timingStr);
+        isAbove = (presentStep >= range.start && presentStep <= range.end);
+        
+        if (!isAbove) {
+          const anim = (slide.layerAnim && slide.layerAnim[lvl]) || 'fade';
+          const offset = 300;
+          if (anim === 'slideL') transform = `translateX(${-offset}px)`;
+          else if (anim === 'slideR') transform = `translateX(${offset}px)`;
+          else if (anim === 'slideU') transform = `translateY(${-offset}px)`;
+          else if (anim === 'slideD') transform = `translateY(${offset}px)`;
+        }
+      }
+      animZ = isAbove ? (110 + layerPriority) : (50 + layerPriority);
+    }
+
+    // editor: Base(50) + Layer Order(20/ea) + Selection Boost(200) + Element Selected Boost(500)
+    const z = isPresenting ? animZ : ((50 + (layerPriority === -1 ? 0 : layerPriority) * 20) + 
+              (parseInt(selectedLayer) === lvl ? 200 : 0) + 
+              (idx === selectedElIdx ? 500 : 0));
+    
+    w.style.left = `${el.x || 0}px`;
+    w.style.top = `${el.y || 0}px`;
+    w.style.width = `${el.w || 300}px`;
+    w.style.height = `${el.h || 80}px`;
+    w.style.zIndex = z;
+
+    if (isPresenting) {
+      w.style.opacity = isAbove ? 1 : 0;
+      w.style.transform = transform;
+      w.style.pointerEvents = isAbove ? 'auto' : 'none';
+      w.style.transition = 'opacity 450ms ease-in-out, transform 450ms ease-in-out, z-index 0ms linear';
+    } else {
+      w.style.opacity = 1;
+      w.style.transform = '';
+      w.style.pointerEvents = 'auto';
+      w.style.transition = '';
+    }
+
+    if (isPresenting && el.type === 'jupyter') {
+      w.style.pointerEvents = isAbove ? 'auto' : 'none';
+    }
 
     if (idx === selectedElIdx) { const sb = document.createElement('div'); sb.className = 'sel-border'; w.appendChild(sb); }
 
@@ -651,9 +732,10 @@ function mkStylePanel(idx, el) {
       <option value="0.85" ${el._bgAlpha === 0.85 ? 'selected' : ''}>85%</option>
     </select>
     <div class="tt-sep"></div>
-    <span class="sp-label">Order</span>
-    <button class="et-btn" onclick="sendToBack(${idx})" title="Send to Back">⏬</button>
-    <button class="et-btn" onclick="bringToFront(${idx})" title="Bring to Front">⏫</button>
+    <span class="sp-label">Layer</span>
+    <button class="layer-btn" onclick="changeLevel(${idx}, -1)" ${el.level === 0 ? 'disabled' : ''} title="Move Down">▼</button>
+    <button class="layer-btn" onclick="changeLevel(${idx}, 1)" title="Move Up">▲</button>
+    <span class="sp-layer-indicator">${(el.level !== undefined ? el.level : 1) === 0 ? 'BG' : 'L' + (el.level !== undefined ? el.level : 1)}</span>
   `;
 
   const mType = el.src ? getMediaType(el.src) : '';
@@ -670,6 +752,300 @@ function mkStylePanel(idx, el) {
 
   return p;
 }
+// ═══════ LAYER DIALOGS ═══════
+let confirmResolve = null;
+function showConfirm(title, message, okText = 'Confirm', cancelText = 'Cancel') {
+  return new Promise((resolve) => {
+    confirmResolve = resolve;
+    document.getElementById('confirmTitle').textContent = title;
+    document.getElementById('confirmMessage').textContent = message;
+    document.getElementById('confirmOkBtn').textContent = okText;
+    const cb = document.getElementById('confirmCancelBtn');
+    if (cb) { cb.textContent = cancelText; cb.style.display = 'block'; }
+    document.getElementById('confirmOverlay').classList.add('show');
+  });
+}
+function showAlert(title, message, okText = 'OK') {
+  return new Promise((resolve) => {
+    confirmResolve = resolve;
+    document.getElementById('confirmTitle').textContent = title;
+    document.getElementById('confirmMessage').textContent = message;
+    document.getElementById('confirmOkBtn').textContent = okText;
+    const cb = document.getElementById('confirmCancelBtn');
+    if (cb) cb.style.display = 'none';
+    document.getElementById('confirmOverlay').classList.add('show');
+  });
+}
+function closeConfirm(val) {
+  document.getElementById('confirmOverlay').classList.remove('show');
+  if (confirmResolve) { confirmResolve(val); confirmResolve = null; }
+}
+
+async function changeLevel(idx, dir) {
+  saveUndo();
+  const slide = slides[currentSlideIdx];
+  const el = slide.elements[idx];
+  if (!slide.layers) slide.layers = [0, 1];
+  
+  let curLvl = el.level !== undefined ? el.level : 1;
+  const layers = slide.layers;
+  const curIdx = layers.indexOf(curLvl);
+  const targetIdx = curIdx + dir;
+
+  // Move DOWN
+  if (dir === -1) {
+    if (curLvl === 0) return; // Already at bottom
+    if (targetIdx === 0) {
+      if (el.type === 'image') {
+        el.level = 0;
+      } else {
+        if (await showConfirm("New Layer", "Create a new layer between this element and the Background?", "Create Layer")) {
+          const newLvl = Math.max(...layers) + 1;
+          layers.splice(1, 0, newLvl);
+          el.level = newLvl;
+        } else {
+          return; // Cancelled
+        }
+      }
+    } else {
+      el.level = layers[targetIdx];
+    }
+  } 
+  // Move UP
+  else {
+    if (targetIdx >= layers.length) {
+      if (layers.length >= 20) {
+        await showAlert("Layer Limit", "Maximum of 20 layers reached per slide.");
+        return;
+      }
+      if (await showConfirm("New Layer", "Create a new layer on top of the current stack?", "Create Layer")) {
+        const newLvl = Math.max(...layers) + 1;
+        layers.push(newLvl);
+        el.level = newLvl;
+      } else {
+        return; // Cancelled
+      }
+    } else {
+      el.level = layers[targetIdx];
+    }
+  }
+
+  renderSlide();
+  renderLayerList();
+}
+
+function renderLayerList() {
+  const slide = slides[currentSlideIdx];
+  if (!slide) return;
+  const list = document.getElementById('layerList');
+  if (!list) return;
+  list.innerHTML = '';
+  
+  const layers = slide.layers || [0, 1];
+  const hidden = slide.hiddenLayers || [];
+  
+  layers.forEach((lvl, i) => {
+    const item = document.createElement('div');
+    const isActive = parseInt(selectedLayer) === lvl;
+    item.className = 'layer-item' + (isActive ? ' active' : '');
+    item.onclick = (e) => {
+      if (e.target.closest('.layer-controls')) return;
+      selectLayer(lvl);
+    };
+    
+    const name = lvl === 0 ? 'Background' : `L${lvl}`;
+    const isChecked = !hidden.some(h => parseInt(h) === lvl);
+    const isBg = lvl === 0;
+    const upDisabled = i <= 1;
+    const downDisabled = i === layers.length - 1;
+    const timing = (slide.layerTiming && slide.layerTiming[lvl]) || '0-';
+    const animObj = (slide.layerAnim && slide.layerAnim[lvl]) || { entry: 'fade', exit: 'fade' };
+    const entryAnim = (typeof animObj === 'string') ? animObj : (animObj.entry || 'fade');
+    const exitAnim = (typeof animObj === 'string') ? animObj : (animObj.exit || 'fade');
+    const animIcons = { 'fade': '◌', 'slideL': '←', 'slideR': '→', 'slideU': '↑', 'slideD': '↓' };
+
+    item.innerHTML = `
+      <div class="layer-controls">
+        <input type="checkbox" class="layer-checkbox" ${isChecked ? 'checked' : ''} onchange="toggleLayerVisibility(${lvl})" title="Toggle Visibility">
+        <div class="layer-anim-group" style="display:flex; gap:2px; width:88px; align-items:center">
+          ${!isBg ? `
+            <button class="layer-anim-toggle" onclick="updateLayerAnim(${lvl}, 'entry')" title="Entry Animation">${animIcons[entryAnim]}</button>
+            <input type="text" class="layer-timing-input" value="${timing}" onchange="updateLayerTiming(${lvl}, this.value)" title="Timestep">
+            <button class="layer-anim-toggle" onclick="updateLayerAnim(${lvl}, 'exit')" title="Exit Animation">${animIcons[exitAnim]}</button>
+          ` : ''}
+        </div>
+      </div>
+      <div class="layer-item-divider">|</div>
+      <span class="layer-name" style="flex:1">${name}</span>
+      <div class="layer-item-actions" style="display:flex; gap:2px;">
+        ${!isBg ? `
+          <button class="layer-btn" onclick="event.stopPropagation();moveLayer(${lvl}, -1)" ${upDisabled ? 'disabled' : ''} title="Move Up">▲</button>
+          <button class="layer-btn" onclick="event.stopPropagation();moveLayer(${lvl}, 1)" ${downDisabled ? 'disabled' : ''} title="Move Down">▼</button>
+          <button class="layer-btn" onclick="event.stopPropagation();deleteLayer(${lvl})" title="Delete">🗑️</button>
+        ` : ''}
+      </div>
+    `;
+    list.appendChild(item);
+  });
+
+  // Update Toggle All checkbox
+  const toggleAll = document.getElementById('layerToggleAll');
+  if (toggleAll) {
+    const total = (slide.layers || [0, 1]).length;
+    const hidCount = (slide.hiddenLayers || []).length;
+    toggleAll.checked = (hidCount === 0);
+    toggleAll.indeterminate = (hidCount > 0 && hidCount < total);
+  }
+}
+
+function updateLayerAnim(lvl, phase) {
+  const slide = slides[currentSlideIdx];
+  if (!slide.layerAnim) slide.layerAnim = {};
+  if (!slide.layerAnim[lvl]) slide.layerAnim[lvl] = { entry: 'fade', exit: 'fade' };
+  
+  // Migration for legacy data
+  if (typeof slide.layerAnim[lvl] === 'string') {
+    const prev = slide.layerAnim[lvl];
+    slide.layerAnim[lvl] = { entry: prev, exit: prev };
+  }
+
+  const current = slide.layerAnim[lvl][phase] || 'fade';
+  const order = ['fade', 'slideL', 'slideR', 'slideU', 'slideD'];
+  const next = order[(order.indexOf(current) + 1) % order.length];
+  slide.layerAnim[lvl][phase] = next;
+  renderLayerList();
+}
+
+function updateLayerTiming(lvl, val) {
+  const slide = slides[currentSlideIdx];
+  if (!slide.layerTiming) slide.layerTiming = {};
+  slide.layerTiming[lvl] = val;
+}
+
+
+function toggleAllLayers(visible) {
+  const slide = slides[currentSlideIdx];
+  if (!slide) return;
+  saveUndo();
+  if (visible) {
+    slide.hiddenLayers = [];
+    if (selectedLayer === -1 || selectedLayer === null) {
+      const layers = slide.layers || [0, 1];
+      selectedLayer = Math.max(...layers);
+    }
+  } else {
+    slide.hiddenLayers = [...(slide.layers || [0, 1])];
+    selectedLayer = -1; // None selected
+  }
+  selectedElIdx = -1;
+  renderLayerList();
+  renderSlide();
+}
+
+function selectLayer(lvl) {
+  const slide = slides[currentSlideIdx];
+  const hidden = slide.hiddenLayers || [];
+  if (hidden.some(h => parseInt(h) === lvl)) return;
+  selectedElIdx = -1;
+  selectedLayer = parseInt(lvl);
+  renderLayerList();
+  renderSlide();
+}
+
+async function deleteLayer(lvl) {
+  if (lvl === 0) return; // Cannot delete background
+  const slide = slides[currentSlideIdx];
+  const hasContent = slide.elements.some(el => (el.level !== undefined ? el.level : 1) === lvl);
+  
+  if (hasContent) {
+    if (!await showConfirm("Delete Layer", `Warning: This layer contains elements. Deleting the layer will also delete all content on it. Proceed?`, "Delete All")) return;
+  }
+  
+  saveUndo();
+  // Remove elements on this layer
+  slide.elements = slide.elements.filter(el => (el.level !== undefined ? el.level : 1) !== lvl);
+  // Remove from layers list
+  slide.layers = slide.layers.filter(l => l !== lvl);
+  // Remove from hidden layers
+  if (slide.hiddenLayers) slide.hiddenLayers = slide.hiddenLayers.filter(l => l !== lvl);
+  
+  renderSlide();
+  renderLayerList();
+}
+
+function addLayer() {
+  saveUndo();
+  const slide = slides[currentSlideIdx];
+  if (!slide.layers) slide.layers = [0, 1];
+  if (slide.layers.length >= 20) {
+    showAlert("Layer Limit", "Maximum of 20 layers reached per slide.");
+    return;
+  }
+  const nextLvl = Math.max(...slide.layers) + 1;
+  slide.layers.push(nextLvl);
+  renderLayerList();
+}
+
+function toggleLayerVisibility(lvl) {
+  saveUndo();
+  const slide = slides[currentSlideIdx];
+  if (!slide.hiddenLayers) slide.hiddenLayers = [];
+  const lvlNum = parseInt(lvl);
+  const layers = slide.layers || [0, 1];
+  
+  if (slide.hiddenLayers.some(h => parseInt(h) === lvlNum)) {
+    // Unhiding
+    slide.hiddenLayers = slide.hiddenLayers.filter(h => parseInt(h) !== lvlNum);
+    if (selectedLayer === -1 || selectedLayer === null) {
+      selectedLayer = lvlNum;
+    }
+  } else {
+    // Hiding
+    slide.hiddenLayers.push(lvlNum);
+    if (selectedLayer === lvlNum) {
+      // Find next visible
+      const idx = layers.indexOf(lvlNum);
+      let next = -1;
+      // Look Below (reverse order of list)
+      for (let i = idx - 1; i >= 0; i--) {
+        if (!slide.hiddenLayers.includes(layers[i])) { next = layers[i]; break; }
+      }
+      // Look from top descending
+      if (next === -1) {
+        for (let i = layers.length - 1; i > idx; i--) {
+          if (!slide.hiddenLayers.includes(layers[i])) { next = layers[i]; break; }
+        }
+      }
+      selectedLayer = next;
+    }
+    
+    // Deselect if active element is on this layer
+    if (selectedElIdx !== -1) {
+      const selEl = slide.elements[selectedElIdx];
+      const selLvl = selEl.level !== undefined ? parseInt(selEl.level) : 1;
+      if (selLvl === lvlNum) {
+        selectedElIdx = -1;
+      }
+    }
+  }
+  renderSlide();
+  renderLayerList();
+}
+
+function moveLayer(lvl, dir) {
+  if (lvl === 0) return; // Background locked
+  saveUndo();
+  const slide = slides[currentSlideIdx];
+  const layers = slide.layers;
+  const idx = layers.indexOf(lvl);
+  const nextIdx = idx + dir;
+  if (nextIdx < 1 || nextIdx >= layers.length) return; 
+  
+  [layers[idx], layers[nextIdx]] = [layers[nextIdx], layers[idx]];
+  renderSlide();
+  renderLayerList();
+}
+
 function bringToFront(i) {
   saveUndo();
   const els = slides[currentSlideIdx].elements;
@@ -861,41 +1237,141 @@ function scalePresentationSlide() {
 }
 window.addEventListener('resize', scalePresentationSlide);
 
-function startPresentation() { persistAll(); presentIdx = 0; while (presentIdx < slides.length && slides[presentIdx].hidden) presentIdx++; if (presentIdx >= slides.length) { toast('No visible slides!'); return; } document.body.classList.add('presenting'); document.getElementById('presentNav').style.display = 'flex'; currentSlideIdx = presentIdx; selectedElIdx = -1; renderSlide(); updatePC(); scalePresentationSlide(); document.addEventListener('keydown', pkh); }
-function stopPresentation() {
-  const canvas = document.getElementById('slideCanvas');
-  if (canvas) {
-    canvas.style.zoom = '';
-    canvas.style.transform = '';
-    canvas.style.transformOrigin = '';
+function startPresentation() { 
+  persistAll(); 
+  presentIdx = 0; 
+  presentStep = 0;
+  while (presentIdx < slides.length && slides[presentIdx].hidden) presentIdx++; 
+  if (presentIdx >= slides.length) { toast('No visible slides!'); return; } 
+  document.body.classList.add('presenting'); 
+  currentSlideIdx = presentIdx; 
+  selectedElIdx = -1; 
+  renderSlide(); 
+  scalePresentationSlide(); 
+  updatePC();
+  document.addEventListener('keydown', pkh); 
+  document.addEventListener('contextmenu', blockContextMenu);
+  document.addEventListener('click', handlePresentClick);
+  
+  const trigger = document.getElementById('presentTrigger');
+  if (trigger) trigger.addEventListener('click', togglePresentNav);
+}
+
+function handlePresentClick(e) {
+  const controls = document.getElementById('presentControls');
+  const nav = document.getElementById('presentNav');
+  const trigger = document.getElementById('presentTrigger');
+  if (controls && controls.classList.contains('show')) {
+    // If click is outside BOTH nav and trigger, hide it
+    if (!nav.contains(e.target) && !trigger.contains(e.target)) {
+      hidePresentNav();
+    }
+  }
+}
+
+function togglePresentNav(e) {
+  if (e) e.stopPropagation();
+  const controls = document.getElementById('presentControls');
+  if (controls) controls.classList.toggle('show');
+}
+
+function hidePresentNav() {
+  const controls = document.getElementById('presentControls');
+  if (controls) controls.classList.remove('show');
+}
+
+function blockContextMenu(e) { e.preventDefault(); }
+
+function getMaxSteps(slide) {
+  let max = 0;
+  if (!slide.layerTiming) return 0;
+  for (const lvl in slide.layerTiming) {
+    const range = parseTiming(slide.layerTiming[lvl]);
+    if (range.start !== Infinity) max = Math.max(max, range.start);
+    if (range.end !== Infinity) max = Math.max(max, range.end);
+  }
+  return max;
+}
+
+function presentNext() { 
+  const slide = slides[presentIdx];
+  const max = getMaxSteps(slide);
+  if (presentStep < max) {
+    presentStep++;
+    renderSlide();
+    return;
   }
   
-  // Restore CodeMirror wrappers to original state
-  Object.values(codeMirrors).forEach(cm => {
-    const wrapper = cm.getWrapperElement();
-    wrapper.style.transform = '';
-    wrapper.style.transformOrigin = '';
-    wrapper.style.fontSize = '';
-    cm.setSize(null, '100%');
-    cm.refresh();
-  });
-  
-  document.body.classList.remove('presenting');
-  document.getElementById('presentNav').style.display = 'none';
-  document.removeEventListener('keydown', pkh);
-  renderSlide();
+  let n = presentIdx + 1; 
+  while (n < slides.length && slides[n].hidden) n++; 
+  if (n >= slides.length) return; 
+  presentIdx = n; 
+  currentSlideIdx = presentIdx; 
+  presentStep = 0;
+  renderSlide(); 
+  scalePresentationSlide(); 
 }
-function presentNext() { let n = presentIdx + 1; while (n < slides.length && slides[n].hidden) n++; if (n >= slides.length) return; presentIdx = n; currentSlideIdx = presentIdx; renderSlide(); updatePC(); scalePresentationSlide(); }
-function presentPrev() { let p = presentIdx - 1; while (p >= 0 && slides[p].hidden) p--; if (p < 0) return; presentIdx = p; currentSlideIdx = presentIdx; renderSlide(); updatePC(); scalePresentationSlide(); }
+
+function presentPrev() { 
+  if (presentStep > 0) {
+    presentStep--;
+    renderSlide();
+    return;
+  }
+  
+  let p = presentIdx - 1; 
+  while (p >= 0 && slides[p].hidden) p--; 
+  if (p < 0) return; 
+  presentIdx = p; 
+  currentSlideIdx = presentIdx; 
+  presentStep = getMaxSteps(slides[presentIdx]);
+  renderSlide(); 
+  scalePresentationSlide(); 
+}
+
 function pkh(e) {
-  // Don't intercept keys when the user is typing in a CodeMirror editor
   const cmFocused = document.activeElement && document.activeElement.closest('.CodeMirror');
   if (cmFocused && e.key !== 'Escape') return;
   if (e.key === 'ArrowRight' || e.key === ' ') presentNext();
   else if (e.key === 'ArrowLeft') presentPrev();
   else if (e.key === 'Escape') stopPresentation();
 }
-function updatePC() { const v = slides.filter(s => !s.hidden); document.getElementById('presentCounter').textContent = `${v.indexOf(slides[presentIdx]) + 1} / ${v.length}`; }
+
+function stopPresentation() {
+  document.body.classList.remove('presenting');
+  document.removeEventListener('keydown', pkh);
+  document.removeEventListener('contextmenu', blockContextMenu);
+  document.removeEventListener('click', handlePresentClick);
+  const trigger = document.getElementById('presentTrigger');
+  if (trigger) trigger.removeEventListener('click', togglePresentNav);
+  hidePresentNav();
+
+  // Restore editor view zoom
+  const canvas = document.getElementById('slideCanvas');
+  if (canvas) {
+    canvas.style.transform = `scale(${workspaceZoom})`;
+    canvas.style.transformOrigin = '';
+  }
+  
+  updateWorkspaceBounds();
+  renderSlide(); 
+  centerSlide();
+}
+
+function updatePC() { 
+  const v = slides.filter(s => !s.hidden); 
+  const currentSlide = slides[presentIdx];
+  const sIdx = v.indexOf(currentSlide) + 1;
+  const max = getMaxSteps(currentSlide);
+  const stepInfo = max > 0 ? ` [Step ${presentStep}/${max}]` : '';
+  
+  const text = `${sIdx} / ${v.length}${stepInfo}`;
+  const counterEl = document.getElementById('presentCounter');
+  if (counterEl) counterEl.textContent = text;
+  
+  const indicatorEl = document.getElementById('presentIndicator');
+  if (indicatorEl) indicatorEl.textContent = text;
+}
 
 // ═══════ SAVE/LOAD ═══════
 async function exportJSON() {
@@ -1000,6 +1476,7 @@ function centerSlide() {
 }
 
 function setZoom(level) {
+  if (document.body.classList.contains('presenting')) return;
   workspaceZoom = Math.max(0.5, Math.min(2.0, level));
   const canvas = document.getElementById('slideCanvas');
   if (canvas) {
@@ -1033,6 +1510,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (wrapper) {
         wrapper.addEventListener('wheel', (e) => {
             if (e.ctrlKey) {
+                if (document.body.classList.contains('presenting')) return;
                 e.preventDefault();
                 // Reduced sensitivity by scaling the delta
                 const delta = -e.deltaY * 0.001; 

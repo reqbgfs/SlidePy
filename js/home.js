@@ -68,21 +68,20 @@ function renderHomeScreen() {
   });
 }
 
-function deletePresentation(idx) {
-  const btn = document.getElementById('btnConfirmDelete');
-  btn.onclick = async () => {
-    const list = getSavedPresentations();
-    const p = list[idx];
+async function deletePresentation(idx) {
+  const list = getSavedPresentations();
+  const p = list[idx];
+  const name = p ? (p.name || 'Untitled') : 'Untitled';
+  
+  if (await showConfirm("Delete Presentation", `Are you sure you want to delete "${name}"? This action cannot be undone.`, "Delete Permanently")) {
     if (p && p.id) {
       await AssetDB.deletePresentation(p.id);
     }
     list.splice(idx, 1);
     savePresentationsList(list);
     renderHomeScreen();
-    closeModal('deleteConfirmModal');
     toast('Presentation deleted');
-  };
-  document.getElementById('deleteConfirmModal').classList.add('show');
+  }
 }
 
 async function loadPresentation(idx) {
@@ -187,7 +186,7 @@ async function saveCurrentPresentation() {
     toast('Save failed! See console.');
     // Check if it's a quota error on the fallback
     if (e.name === 'QuotaExceededError') {
-      alert("Local Storage is full. Please export your work to ZIP to prevent data loss!");
+      showAlert('Storage Full', "Local Storage is full. Please export your work to ZIP to prevent data loss!");
     }
   }
 }
@@ -320,7 +319,7 @@ async function importPresentation(event) {
     toast('Imported presentation!');
   } catch(err) {
     console.error(err);
-    alert('Invalid presentation file: ' + err.message);
+    showAlert('Import Error', 'Invalid presentation file: ' + err.message);
   }
   event.target.value = '';
 }
@@ -637,7 +636,7 @@ async function connectGithub() {
     }
   } catch (e) {
     GithubSync.clearConfig();
-    alert('Discovery failed: ' + e.message);
+    showAlert('Discovery Error', 'Discovery failed: ' + e.message);
   } finally {
     btn.disabled = false; 
     if (btn.textContent === 'Verifying...') btn.textContent = 'Connect';
@@ -650,49 +649,10 @@ async function connectGithub() {
   }
 }
 async function disconnectGithub() {
-  const modal = document.getElementById('disconnectConfirmModal');
-  const titleObj = document.getElementById('disconnectTitle');
-  const msgObj = document.getElementById('disconnectMsg');
-  const btnsObj = document.getElementById('disconnectBtns');
-  
-  if (hasUnsavedChanges()) {
-    titleObj.textContent = 'Unsaved Changes';
-    msgObj.textContent = 'You have unsaved changes. Would you like to save and UPLOAD them before disconnecting?';
-    btnsObj.innerHTML = `
-      <button class="modal-btn" onclick="closeModal('disconnectConfirmModal')">Cancel</button>
-      <button class="modal-btn" style="background:var(--red); border-color:var(--red)" id="btnDisconnectAnyway">Disconnect Anyway</button>
-      <button class="modal-btn primary" id="btnDisconnectUpload">Upload & Disconnect</button>
-    `;
-    document.getElementById('btnDisconnectAnyway').onclick = () => {
-      closeModal('disconnectConfirmModal');
-      finalizeDisconnect();
-    };
-    document.getElementById('btnDisconnectUpload').onclick = async () => {
-      closeModal('disconnectConfirmModal');
-      try {
-        await GithubSync.upload();
-        finalizeDisconnect();
-      } catch (e) {
-        // Option to fail if upload failed
-        const failedModal = document.getElementById('disconnectConfirmModal');
-        document.getElementById('disconnectTitle').textContent = 'Upload Failed';
-        document.getElementById('disconnectMsg').textContent = 'Cloud upload failed. Disconnect anyway?';
-        document.getElementById('disconnectBtns').innerHTML = `
-          <button class="modal-btn" onclick="closeModal('disconnectConfirmModal')">Cancel</button>
-          <button class="modal-btn primary" style="background:var(--red); border-color:var(--red)" onclick="closeModal('disconnectConfirmModal'); finalizeDisconnect();">Disconnect</button>
-        `;
-        failedModal.classList.add('show');
-      }
-    };
-  } else {
-    titleObj.textContent = 'Disconnect Repository?';
-    msgObj.textContent = 'Are you sure you want to disconnect from this repository?';
-    btnsObj.innerHTML = `
-      <button class="modal-btn" onclick="closeModal('disconnectConfirmModal')">Cancel</button>
-      <button class="modal-btn primary" style="background:var(--red); border-color:var(--red)" onclick="closeModal('disconnectConfirmModal'); finalizeDisconnect();">Disconnect</button>
-    `;
+  if (await showConfirm("Disconnect GitHub", "Are you sure you want to disconnect from this repository? Your local data will remain, but cloud sync will be disabled.", "Disconnect")) {
+    finalizeDisconnect();
+    toast('Disconnected from GitHub');
   }
-  modal.classList.add('show');
 }
 
 function finalizeDisconnect() {
