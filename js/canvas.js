@@ -4,6 +4,8 @@ const CANVAS_W = 960;
 const CANVAS_H = 540;
 const BORDER_SNAP_MARGIN = 40;
 const ELEMENT_GAP = 20;
+const MIN_JUPYTER_W = (CANVAS_W - 2 * BORDER_SNAP_MARGIN) / 2; // 440
+const MIN_JUPYTER_H = (CANVAS_H - 2 * BORDER_SNAP_MARGIN) / 2; // 230
 
 function selectEl(idx) { 
   if(selectedElIdx!==idx){ 
@@ -396,8 +398,8 @@ function startResize(e, idx, corner = 'se') {
       if (el.type === 'subtitle') minH = 50;
       if (el.type === 'body') minH = 44;
 
-      let targetW = Math.max(80, rawW);
-      let targetH = Math.max(minH, rawH);
+      let targetW = Math.max(el.type === 'jupyter' ? MIN_JUPYTER_W : 80, rawW);
+      let targetH = Math.max(el.type === 'jupyter' ? MIN_JUPYTER_H : minH, rawH);
 
       if (el.type !== 'image') {
         targetW = Math.min(CANVAS_W - el.x, targetW);
@@ -414,27 +416,19 @@ function startResize(e, idx, corner = 'se') {
           if (targetW > CANVAS_W - el.x) { targetW = CANVAS_W - el.x; targetH = targetW / ratio; }
         }
       }      
-      // Code cells ONLY resized vertically
-      if (el.type === 'jupyter') {
-        targetW = sW; // lock width
-        targetH = Math.max((CANVAS_H - 2 * BORDER_SNAP_MARGIN) / 2, targetH);
-      }
-
       let targetR = el.x + targetW;
       let targetB = el.y + targetH;
 
       if (el.type !== 'image') {
         let orig_h = originalEls[idx].h;
         originalEls[idx].h = targetH; 
-        let pushAmountX = 0;
-        if (el.type !== 'jupyter' && targetW > sW) pushAmountX = targetW - sW;
+        let pushAmountX = targetW > sW ? targetW - sW : 0;
         applyCascade(originalEls, slides[currentSlideIdx].elements, idx, 'right', pushAmountX);
         originalEls[idx].h = orig_h;
         
         let orig_w = originalEls[idx].w;
         originalEls[idx].w = targetW; 
-        let pushAmountY = 0;
-        if (el.type !== 'jupyter' && targetH > sH) pushAmountY = targetH - sH;
+        let pushAmountY = targetH > sH ? targetH - sH : 0;
         applyCascade(originalEls, slides[currentSlideIdx].elements, idx, 'down', pushAmountY);
         originalEls[idx].w = orig_w;
       }
@@ -464,7 +458,7 @@ function startResize(e, idx, corner = 'se') {
         // If snap pushes it out of slide bounds, clamp and readjust
         // NO-OP: Clamping removed to allow off-slide media sizing
       } else {
-        if (snap.snappedX !== null && el.type !== 'jupyter') { targetW = snap.snappedX - el.x; showGuide('v', snap.guideX); }
+        if (snap.snappedX !== null) { targetW = snap.snappedX - el.x; showGuide('v', snap.guideX); }
         if (snap.snappedY !== null) { targetH = snap.snappedY - el.y; showGuide('h', snap.guideY); }
       }
       const isOverlap = checkOverlap({ l: el.x, r: el.x + targetW, t: el.y, b: el.y + targetH }, idx);
@@ -486,16 +480,14 @@ function startResize(e, idx, corner = 'se') {
       // Free scale moving backwards out (Top-Left scale)
       let dx = (ev.clientX - sX) / workspaceZoom;
       let dy = (ev.clientY - sY) / workspaceZoom;
-      
-      if (el.type === 'jupyter') {
-        dx = 0; // lock width logic
-      }
-
       let minH = 40;
       if (el.type === 'title') minH = 64;
       if (el.type === 'subtitle') minH = 50;
       if (el.type === 'body') minH = 44;
-      let targetW = Math.max(80, sW - dx);
+      if (el.type === 'jupyter') minH = MIN_JUPYTER_H;
+
+      let minW = el.type === 'jupyter' ? MIN_JUPYTER_W : 80;
+      let targetW = Math.max(minW, sW - dx);
       let targetH = Math.max(minH, sH - dy);
       
       // Optional: Clamp bounds for non-media so X and Y don't drift past < 0 logic layout frame limits
@@ -504,7 +496,7 @@ function startResize(e, idx, corner = 'se') {
         if (originalY + dy < 0) { dy = -originalY; targetH = sH - dy; }
       }      
       // If width/height collapse to minimum defaults, block axis shifting scaling further
-      if (targetW === 80) dx = sW - 80;
+      if (targetW === minW) dx = sW - minW;
       if (targetH === minH) dy = sH - minH;
       
       let targetX = originalX + dx;
@@ -580,7 +572,7 @@ function startResize(e, idx, corner = 'se') {
         // NO-OP: Clamping removed to allow off-slide media placement/sizing
 
       } else {
-        if (snap.snappedX !== null && el.type !== 'jupyter') { 
+        if (snap.snappedX !== null) { 
           let newTargetW = targetW + (targetX - snap.snappedX);
           if (newTargetW >= 80) {
             targetW = newTargetW; 

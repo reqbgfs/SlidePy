@@ -178,7 +178,7 @@ function addElement(type, props = {}, initialContent = null) {
   else if (type === 'subtitle') els.push({ type: 'subtitle', content: initialContent || 'Subtitle', x: sX, y: sY, w: sW, h: sH, ...finalDefaults });
   else if (type === 'body') els.push({ type: 'body', content: initialContent || 'Body text', x: sX, y: sY, w: sW, h: sH, ...finalDefaults });
   else if (type === 'image') els.push({ type: 'image', src: '', x: sX, y: sY, w: sW, h: sH, ...finalDefaults });
-  else if (type === 'jupyter') els.push({ type: 'jupyter', code: '# Python\n', output: '', x: sX, y: sY, w: sW, h: sH, ...finalDefaults });
+  else if (type === 'jupyter') els.push({ type: 'jupyter', code: '# Python\n', output: '', codeRatio: 0.6, x: sX, y: sY, w: sW, h: sH, ...finalDefaults });
 
   selectedElIdx = els.length - 1;
   renderSlide();
@@ -411,15 +411,9 @@ function renderSlide() {
       w.appendChild(rh);
 
       // Resize NW
-      if (el.type !== 'jupyter') {
-        const rhNW = document.createElement('div'); rhNW.className = 'resize-handle resize-nw';
-        rhNW.addEventListener('mousedown', (e) => startResize(e, idx, 'nw'));
-        w.appendChild(rhNW);
-      } else {
-        const rhN = document.createElement('div'); rhN.className = 'resize-handle resize-n';
-        rhN.addEventListener('mousedown', (e) => startResize(e, idx, 'nw'));
-        w.appendChild(rhN);
-      }
+      const rhNW = document.createElement('div'); rhNW.className = 'resize-handle resize-nw';
+      rhNW.addEventListener('mousedown', (e) => startResize(e, idx, 'nw'));
+      w.appendChild(rhNW);
 
       if (el.type === 'title' || el.type === 'subtitle' || el.type === 'body') renderTextEl(w, el, idx, isLight);
       else if (el.type === 'image') renderImageEl(w, el, idx);
@@ -747,8 +741,38 @@ async function uploadFromPicker() {
 function renderJupyterEl(w, el, idx) {
   const cmId = `cm_${currentSlideIdx}_${idx}`;
   const cell = document.createElement('div'); cell.className = 'jupyter-cell';
-  cell.innerHTML = `<div class="cell-code-side"><div class="cell-code-header"><span class="cell-code-label"><span class="py-dot"></span>Python</span><button class="run-btn" id="runBtn_${idx}" onclick="event.stopPropagation();runCell(${idx})">▶ Run</button></div><div class="cell-code-editor" id="editor_${cmId}"></div></div><div class="cell-output-side"><div class="cell-output-header"><span class="cell-output-label">⬡ Output</span><button class="clear-output-btn" onclick="event.stopPropagation();clearOutput(${idx})">✕ Clear</button></div><div class="cell-output-content" id="output_${idx}">${el.output || '<span style="color:var(--text-muted)">Run code to see output...</span>'}</div></div>`;
+  const ratio = el.codeRatio || 0.6;
+  
+  cell.innerHTML = `
+    <div class="cell-code-side" style="flex: ${ratio}">
+      <div class="cell-code-header">
+        <span class="cell-code-label"><span class="py-dot"></span>Python</span>
+        <button class="run-btn" id="runBtn_${idx}" onclick="event.stopPropagation();runCell(${idx})">▶ Run</button>
+      </div>
+      <div class="cell-code-editor" id="editor_${cmId}"></div>
+    </div>
+    <div class="cell-divider" onclick="event.stopPropagation()"></div>
+    <div class="cell-output-side" style="flex: ${1 - ratio}">
+      <div class="cell-output-header">
+        <span class="cell-output-label">⬡ Output</span>
+        <button class="clear-output-btn" onclick="event.stopPropagation();clearOutput(${idx})">✕ Clear</button>
+      </div>
+      <div class="cell-output-content" id="output_${idx}">
+        ${el.output || '<span style="color:var(--text-muted)">Run code to see output...</span>'}
+      </div>
+    </div>
+  `;
   w.appendChild(cell);
+
+  // Ratio resize interaction (Editor only)
+  if (!document.body.classList.contains('presenting')) {
+    const divider = cell.querySelector('.cell-divider');
+    divider.addEventListener('mousedown', (e) => {
+      e.stopPropagation();
+      startCellRatioResize(e, idx);
+    });
+  }
+
   requestAnimationFrame(() => {
     const ee = document.getElementById(`editor_${cmId}`); if (!ee) return;
     const cm = CodeMirror(ee, {
@@ -759,6 +783,60 @@ function renderJupyterEl(w, el, idx) {
     });
     codeMirrors[cmId] = cm; setTimeout(() => cm.refresh(), 50);
   });
+}
+
+function startCellRatioResize(e, idx) {
+  const el = slides[currentSlideIdx].elements[idx];
+  const wrapper = document.querySelector(`[data-el-idx="${idx}"]`);
+  if (!wrapper) return;
+  
+  const startX = e.clientX;
+  const startRatio = el.codeRatio || 0.6;
+  const rect = wrapper.getBoundingClientRect();
+  const width = rect.width;
+  
+  document.body.classList.add('resizing-ratio');
+  
+  const onMove = (ev) => {
+    const deltaX = (ev.clientX - startX) / workspaceZoom;
+    let newRatio = startRatio + (deltaX / (width / workspaceZoom));
+    
+    // Snapping points (1:1, 3:2, 2:3, 1:3, 3:1)
+    const snaps = [0.25, 0.4, 0.5, 0.6, 0.75];
+    for (const snap of snaps) {
+      if (Math.abs(newRatio - snap) < 0.03) {
+        newRatio = snap;
+        break;
+      }
+    }
+    
+    // Clamp (Restrict to range 1:3 to 3:1)
+    newRatio = Math.max(0.25, Math.min(0.75, newRatio));
+    
+    el.codeRatio = newRatio;
+    
+    // Live update flex without full re-render for performance
+    const codeSide = wrapper.querySelector('.cell-code-side');
+    const outSide = wrapper.querySelector('.cell-output-side');
+    if (codeSide && outSide) {
+      codeSide.style.flex = newRatio;
+      outSide.style.flex = 1 - newRatio;
+    }
+    
+    // Refresh CodeMirror to fit new width
+    const cmId = `cm_${currentSlideIdx}_${idx}`;
+    if (codeMirrors[cmId]) codeMirrors[cmId].refresh();
+  };
+  
+  const onUp = () => {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    document.body.classList.remove('resizing-ratio');
+    saveCurrentPresentation();
+  };
+  
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
 }
 
 // ═══════ STYLE PANEL ═══════
