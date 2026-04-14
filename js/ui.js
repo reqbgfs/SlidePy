@@ -41,6 +41,9 @@ function addElement(type, props = {}, initialContent = null) {
       if (exclude && e === exclude) continue;
       if ((e.level !== undefined ? e.level : 1) !== spawnLevel) continue;
       
+      // Media elements ignore text/jupyter elements during spawn collision
+      if (type === 'image' && e.type !== 'image') continue;
+
       const noOverlap = (x + w + gap <= e.x) || (x >= e.x + e.w + gap) ||
         (y + h + gap <= e.y) || (y >= e.y + e.h + gap);
       if (!noOverlap) return true;
@@ -270,35 +273,51 @@ function renderSidebar() {
 
 function renderSlide() {
   updateWorkspaceBounds();
-  codeMirrors = {};
   const slide = slides[currentSlideIdx];
   const canvas = document.getElementById('slideCanvas');
-  canvas.style.background = slide.bg; canvas.innerHTML = '';
+  const isPresenting = document.body.classList.contains('presenting');
+  const wasPresenting = canvas.dataset.wasPresenting === 'true';
 
-  if (document.body.classList.contains('presenting')) updatePC();
+  // Clear everything if slide ID changed or mode changed to Presenting for absolute state reset
+  if (canvas.dataset.activeSlideId !== slide.id) {
+    canvas.innerHTML = '';
+    canvas.dataset.activeSlideId = slide.id;
+    canvas.style.background = slide.bg;
+    codeMirrors = {};
+  }
+
+  if (isPresenting) updatePC();
+  canvas.dataset.wasPresenting = isPresenting;
   
   const layerSeq = slide.layers || [0, 1];
   const hiddenLevels = slide.hiddenLayers || [];
 
-  if (slide.hidden && !document.body.classList.contains('presenting')) {
+  if (slide.hidden && !isPresenting) {
     const b = document.createElement('div');
     b.style.cssText = 'position:absolute;top:12px;right:12px;background:rgba(248,113,113,0.15);color:var(--red);font-size:11px;font-weight:700;padding:3px 10px;border-radius:4px;z-index:200;';
     b.textContent = 'HIDDEN SLIDE'; canvas.appendChild(b);
   }
   const isLight = isLightColor(slide.bg);
-  slide.elements.forEach((el, idx) => {
+
+    const isEnteringPresent = isPresenting && !wasPresenting;
+    if (isEnteringPresent) canvas.classList.add('no-anim');
+
+    slide.elements.forEach((el, idx) => {
     const lvl = el.level !== undefined ? parseInt(el.level) : 1;
     if (hiddenLevels.some(h => parseInt(h) === lvl)) return;
 
-    const w = document.createElement('div');
+    // Reconciliation: Check if element already exists
+    let w = canvas.querySelector(`.slide-element-free[data-el-idx="${idx}"]`);
+    const isNew = !w;
+    if (isNew) {
+      w = document.createElement('div');
+      w.dataset.elIdx = idx;
+      w.dataset.type = el.type;
+    }
+    
     w.className = 'slide-element-free' + (idx === selectedElIdx ? ' selected' : '');
-    w.dataset.elIdx = idx;
-    w.dataset.type = el.type;
     
     const layerPriority = layerSeq.indexOf(lvl);
-    
-    // Presentation Mode Animation Logic
-    const isPresenting = document.body.classList.contains('presenting');
     let isAbove = true;
     let animZ = 50 + (layerPriority === -1 ? 0 : layerPriority);
     let transform = 'translate(0,0)';
@@ -312,22 +331,34 @@ function renderSlide() {
         isAbove = (presentStep >= range.start && presentStep <= range.end);
         
         if (!isAbove) {
-          const anim = (slide.layerAnim && slide.layerAnim[lvl]) || 'fade';
-          const offset = 300;
-          if (anim === 'slideL') transform = `translateX(${-offset}px)`;
-          else if (anim === 'slideR') transform = `translateX(${offset}px)`;
-          else if (anim === 'slideU') transform = `translateY(${-offset}px)`;
-          else if (anim === 'slideD') transform = `translateY(${offset}px)`;
+          let anim = 'fade';
+          const isEntryPhase = presentStep < range.start;
+          if (slide.layerAnim && slide.layerAnim[lvl]) {
+            const animData = slide.layerAnim[lvl];
+            if (typeof animData === 'string') {
+              anim = animData;
+            } else {
+              anim = isEntryPhase ? (animData.entry || 'fade') : (animData.exit || 'fade');
+            }
+          }
+          const offset = 600;
+          // Invert the off-screen start position for entry so it slides TOWARDS the specified direction
+          const dirMod = isEntryPhase ? -1 : 1; 
+          
+          if (anim === 'slideL') transform = `translateX(${dirMod * -offset}px)`;
+          else if (anim === 'slideR') transform = `translateX(${dirMod * offset}px)`;
+          else if (anim === 'slideU') transform = `translateY(${dirMod * -offset}px)`;
+          else if (anim === 'slideD') transform = `translateY(${dirMod * offset}px)`;
         }
       }
       animZ = isAbove ? (110 + layerPriority) : (50 + layerPriority);
     }
 
-    // editor: Base(50) + Layer Order(20/ea) + Selection Boost(200) + Element Selected Boost(500)
     const z = isPresenting ? animZ : ((50 + (layerPriority === -1 ? 0 : layerPriority) * 20) + 
               (parseInt(selectedLayer) === lvl ? 200 : 0) + 
               (idx === selectedElIdx ? 500 : 0));
     
+    // Update wrapper position and basic layer styles
     w.style.left = `${el.x || 0}px`;
     w.style.top = `${el.y || 0}px`;
     w.style.width = `${el.w || 300}px`;
@@ -335,57 +366,81 @@ function renderSlide() {
     w.style.zIndex = z;
 
     if (isPresenting) {
+      if (isAbove) w.classList.remove('exiting');
+      else w.classList.add('exiting');
+
       w.style.opacity = isAbove ? 1 : 0;
       w.style.transform = transform;
+      w.style.visibility = isAbove ? 'visible' : 'hidden';
       w.style.pointerEvents = isAbove ? 'auto' : 'none';
-      w.style.transition = 'opacity 450ms ease-in-out, transform 450ms ease-in-out, z-index 0ms linear';
+      if (isNew) w.style.transition = 'none'; // Ensure new items don't animate their first frame
     } else {
       w.style.opacity = 1;
       w.style.transform = '';
       w.style.pointerEvents = 'auto';
       w.style.transition = '';
+      w.style.visibility = 'visible';
     }
 
     if (isPresenting && el.type === 'jupyter') {
       w.style.pointerEvents = isAbove ? 'auto' : 'none';
     }
 
-    if (idx === selectedElIdx) { const sb = document.createElement('div'); sb.className = 'sel-border'; w.appendChild(sb); }
+    // Only rebuild inner contents if NEW or in Editor Mode
+    if (isNew || !isPresenting) {
+      w.innerHTML = '';
+      if (idx === selectedElIdx) { const sb = document.createElement('div'); sb.className = 'sel-border'; w.appendChild(sb); }
 
-    w.innerHTML += `<div class="el-actions-free"><button onclick="event.stopPropagation();duplicateElement(${idx})" title="Duplicate" style="background:var(--bg-card)">📋</button><button onclick="event.stopPropagation();removeElement(${idx})" title="Remove">✕</button></div>`;
+      w.innerHTML += `<div class="el-actions-free"><button onclick="event.stopPropagation();duplicateElement(${idx})" title="Duplicate" style="background:var(--bg-card)">📋</button><button onclick="event.stopPropagation();removeElement(${idx})" title="Remove">✕</button></div>`;
 
-    // Drag header
-    const dh = document.createElement('div'); dh.className = 'drag-header';
-    dh.innerHTML = '<span class="dots"></span>';
-    dh.addEventListener('mousedown', (e) => { e.preventDefault(); selectEl(idx); startDrag(e, idx); });
-    w.appendChild(dh);
+      // Drag header
+      const dh = document.createElement('div'); dh.className = 'drag-header';
+      dh.innerHTML = '<span class="dots"></span>';
+      dh.addEventListener('mousedown', (e) => { e.preventDefault(); selectEl(idx); startDrag(e, idx); });
+      w.appendChild(dh);
 
-    // Universal selection click
-    w.addEventListener('mousedown', (e) => {
-      if (e.target.closest('.el-actions-free') || e.target.closest('.resize-handle') || e.target.closest('.drag-header')) return;
-      selectEl(idx);
-    });
+      // Universal selection click
+      w.addEventListener('mousedown', (e) => {
+        if (e.target.closest('.el-actions-free') || e.target.closest('.resize-handle') || e.target.closest('.drag-header')) return;
+        selectEl(idx);
+      });
 
-    // Resize
-    const rh = document.createElement('div'); rh.className = 'resize-handle';
-    rh.addEventListener('mousedown', (e) => startResize(e, idx));
-    w.appendChild(rh);
+      // Resize
+      const rh = document.createElement('div'); rh.className = 'resize-handle';
+      rh.addEventListener('mousedown', (e) => startResize(e, idx));
+      w.appendChild(rh);
 
-    // Resize NW
-    if (el.type !== 'jupyter') {
-      const rhNW = document.createElement('div'); rhNW.className = 'resize-handle resize-nw';
-      rhNW.addEventListener('mousedown', (e) => startResize(e, idx, 'nw'));
-      w.appendChild(rhNW);
-    } else {
-      const rhN = document.createElement('div'); rhN.className = 'resize-handle resize-n';
-      rhN.addEventListener('mousedown', (e) => startResize(e, idx, 'nw'));
-      w.appendChild(rhN);
+      // Resize NW
+      if (el.type !== 'jupyter') {
+        const rhNW = document.createElement('div'); rhNW.className = 'resize-handle resize-nw';
+        rhNW.addEventListener('mousedown', (e) => startResize(e, idx, 'nw'));
+        w.appendChild(rhNW);
+      } else {
+        const rhN = document.createElement('div'); rhN.className = 'resize-handle resize-n';
+        rhN.addEventListener('mousedown', (e) => startResize(e, idx, 'nw'));
+        w.appendChild(rhN);
+      }
+
+      if (el.type === 'title' || el.type === 'subtitle' || el.type === 'body') renderTextEl(w, el, idx, isLight);
+      else if (el.type === 'image') renderImageEl(w, el, idx);
+      else if (el.type === 'jupyter') renderJupyterEl(w, el, idx);
+      
+      if (isNew) canvas.appendChild(w);
     }
+  });
 
-    if (el.type === 'title' || el.type === 'subtitle' || el.type === 'body') renderTextEl(w, el, idx, isLight);
-    else if (el.type === 'image') renderImageEl(w, el, idx);
-    else if (el.type === 'jupyter') renderJupyterEl(w, el, idx);
-    canvas.appendChild(w);
+  if (isEnteringPresent) {
+    canvas.offsetHeight; // Force reflow
+    canvas.classList.remove('no-anim');
+  }
+
+  // Cleanup: Remove DOM elements that no longer exist in the slide elements array
+  const currentEls = canvas.querySelectorAll('.slide-element-free');
+  currentEls.forEach(existingW => {
+    const eIdx = parseInt(existingW.dataset.elIdx);
+    if (eIdx >= slide.elements.length) {
+      existingW.remove();
+    }
   });
 }
 

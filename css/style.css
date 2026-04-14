@@ -352,7 +352,15 @@ body.presenting .main-layout { width:100vw; height:100vh; overflow:hidden; backg
 body.presenting .slide-canvas-wrapper { padding:0; flex:none; display:flex; align-items:center; justify-content:center; overflow:visible; width:100vw; height:100vh; }
 body.presenting .slide-canvas { width:960px; height:540px; border-radius:0; box-shadow:none; flex-shrink:0; }
 body.presenting .el-actions-free,body.presenting .resize-handle,body.presenting .text-toolbar,body.presenting .style-panel,body.presenting .sel-border,body.presenting .drag-header { display:none !important; }
-body.presenting .slide-element-free { cursor:default; pointer-events:none; }
+body.presenting .slide-element-free { 
+  cursor:default; 
+  pointer-events:none; 
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  transition: opacity 500ms var(--ease), transform 500ms var(--ease), z-index 0ms linear, visibility 500ms;
+}
+body.presenting .slide-element-free.exiting {
+  --ease: cubic-bezier(0.7, 0, 0.84, 0);
+}
 body.presenting .slide-element-free[data-type="jupyter"] { pointer-events:auto; cursor:text; }
 body.presenting .text-element-content { cursor:default; pointer-events: none; user-select: none; }
 body.presenting .text-element-box { height:100% !important; }
@@ -360,6 +368,11 @@ body.presenting .jupyter-cell { height:100% !important; }
 body.presenting .cell-code-side { clip-path:inset(0); }
 body.presenting .cell-code-header { flex-shrink:0; }
 body.presenting .cell-code-editor { min-height:0; overflow:visible !important; }
+
+/* Utility to block entry animations from Editor -> Present */
+.no-anim .slide-element-free {
+  transition: none !important;
+}
 .present-nav { display:none; opacity:0; pointer-events:none; position:fixed; bottom:20px; left:50%; transform:translateX(-50%); gap:8px; background:rgba(22,22,29,0.9); padding:8px 16px; border-radius:30px; border:1px solid var(--border); z-index:10000; transition:opacity 300ms, transform 300ms ease-out; }
 
 /* In presentation mode: PREPARE to show (flex but opacity 0) */

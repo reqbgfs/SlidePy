@@ -9,21 +9,25 @@ function parseTiming(str) {
   if (!str) return { start: 0, end: Infinity };
   const s = str.trim();
   if (!s) return { start: 0, end: Infinity };
+  
   // Case: -2 (hidden after step 2)
   if (s.startsWith('-')) {
     const end = parseInt(s.slice(1));
     return { start: 0, end: isNaN(end) ? Infinity : end };
   }
-  // Case: 1-3 or 2-
+  
+  // Case: 1-3 or 2- (range)
   if (s.includes('-')) {
     const parts = s.split('-');
     const start = parseInt(parts[0]);
-    const end = parts[1] === '' ? Infinity : parseInt(parts[1]);
+    const end = (parts[1] === '') ? Infinity : parseInt(parts[1]);
     return { start: isNaN(start) ? 0 : start, end: isNaN(end) ? Infinity : end };
   }
-  // Case: 2 (starts at 2, stays)
-  const start = parseInt(s);
-  return { start: isNaN(start) ? 0 : start, end: Infinity };
+  
+  // Case: 2 (discrete step: only visible in step 2)
+  const step = parseInt(s);
+  if (isNaN(step)) return { start: 0, end: Infinity };
+  return { start: step, end: step };
 }
 
 function genId() { return 's'+Date.now()+Math.random().toString(36).substr(2,5); }
