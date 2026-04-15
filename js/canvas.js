@@ -16,12 +16,20 @@ function getTextMinH(el) {
 }
 
 function selectEl(idx) {
-  if(selectedElIdx!==idx){ 
+  if (selectedElIdx !== idx) {
     if (typeof closeColorPalette === 'function') closeColorPalette();
-    persistAll(); 
-    selectedElIdx=idx; 
-    renderSlide(); 
-  } 
+    persistAll();
+    selectedElIdx = idx;
+    // Sync the active layer to the selected element's level
+    if (idx !== -1 && slides[currentSlideIdx]) {
+      const el = slides[currentSlideIdx].elements[idx];
+      if (el !== undefined) {
+        selectedLayer = el.level !== undefined ? parseInt(el.level) : 1;
+        if (typeof renderLayerList === 'function') renderLayerList();
+      }
+    }
+    renderSlide();
+  }
 }
 
 function clearGuides() {

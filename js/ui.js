@@ -193,10 +193,10 @@ function toggleTextDropdown(e) {
 
 function addAlert(variant) {
   const styles = {
-    danger: { borderColor: '#f87171', _bgHex: '#f87171', _bgAlpha: 0.15, borderWidth: 2, icon: '❗', label: 'Danger' },
-    success: { borderColor: '#4ade80', _bgHex: '#4ade80', _bgAlpha: 0.15, borderWidth: 2, icon: '✅', label: 'Success' },
-    warning: { borderColor: '#facc15', _bgHex: '#facc15', _bgAlpha: 0.15, borderWidth: 2, icon: '⚠️', label: 'Warning' },
-    info: { borderColor: '#22d3ee', _bgHex: '#22d3ee', _bgAlpha: 0.15, borderWidth: 2, icon: 'ℹ️', label: 'Info' }
+    danger: { borderColor: '#b91c1c', _bgHex: '#f87171', _bgAlpha: 0.25, borderWidth: 2, icon: '❗', label: 'Danger' },
+    success: { borderColor: '#15803d', _bgHex: '#4ade80', _bgAlpha: 0.25, borderWidth: 2, icon: '✅', label: 'Success' },
+    warning: { borderColor: '#facc15', _bgHex: '#facc15', _bgAlpha: 0.25, borderWidth: 2, icon: '⚠️', label: 'Warning' },
+    info: { borderColor: '#1e3a8a', _bgHex: '#22d3ee', _bgAlpha: 0.25, borderWidth: 2, icon: 'ℹ️', label: 'Info' }
   };
   const s = styles[variant];
   const content = `${s.icon} <b style="color:${s.borderColor}">${s.label}</b> ${s.icon}&nbsp; `;
@@ -283,10 +283,12 @@ function renderSlide() {
   const bgSelect = document.getElementById('bgSelect');
   if (bgSelect) bgSelect.value = slide.bg;
 
+  let canvasCleared = false;
   if (canvas.dataset.activeSlideId !== slide.id) {
     canvas.innerHTML = '';
     canvas.dataset.activeSlideId = slide.id;
     codeMirrors = {};
+    canvasCleared = true;
   }
 
   if (isPresenting) updatePC();
@@ -303,7 +305,8 @@ function renderSlide() {
   const isLight = isLightColor(slide.bg);
 
   const isEnteringPresent = isPresenting && !wasPresenting;
-  if (isEnteringPresent) canvas.classList.add('no-anim');
+  const isSlideSwitchPresent = isPresenting && canvasCleared;
+  if (isEnteringPresent || isSlideSwitchPresent) canvas.classList.add('no-anim');
 
   slide.elements.forEach((el, idx) => {
     const lvl = el.level !== undefined ? parseInt(el.level) : 1;
@@ -392,7 +395,6 @@ function renderSlide() {
       w.style.transform = transform;
       w.style.visibility = isAbove ? 'visible' : 'hidden';
       w.style.pointerEvents = isAbove ? 'auto' : 'none';
-      if (isNew) w.style.transition = 'none'; // Ensure new items don't animate their first frame
       // jupyter-output: hidden until code runs, shown when outputVisible
       if (el.type === 'jupyter-output') {
         const show = isAbove && !!el.outputVisible;
@@ -459,17 +461,20 @@ function renderSlide() {
     }
   });
 
-  if (isEnteringPresent) {
+  if (isEnteringPresent || isSlideSwitchPresent) {
     canvas.offsetHeight; // Force reflow
     canvas.classList.remove('no-anim');
   }
 
-  // Cleanup: Remove DOM elements that no longer exist in the slide elements array
+  // Cleanup: Remove DOM elements that no longer exist or belong to a hidden layer
   const currentEls = canvas.querySelectorAll('.slide-element-free');
   currentEls.forEach(existingW => {
     const eIdx = parseInt(existingW.dataset.elIdx);
-    if (eIdx >= slide.elements.length) {
-      existingW.remove();
+    if (eIdx >= slide.elements.length) { existingW.remove(); return; }
+    const elData = slide.elements[eIdx];
+    if (elData) {
+      const lvl = elData.level !== undefined ? parseInt(elData.level) : 1;
+      if (hiddenLevels.some(h => parseInt(h) === lvl)) existingW.remove();
     }
   });
 }
@@ -1625,7 +1630,7 @@ window.addEventListener('resize', scalePresentationSlide);
 
 function startPresentation() {
   persistAll();
-  presentIdx = 0;
+  presentIdx = currentSlideIdx;
   presentStep = 0;
   while (presentIdx < slides.length && slides[presentIdx].hidden) presentIdx++;
   if (presentIdx >= slides.length) { toast('No visible slides!'); return; }

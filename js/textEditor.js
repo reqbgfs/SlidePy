@@ -1,7 +1,7 @@
 // ═══════ TEXT TOOLBAR ═══════
 function mkTextToolbar(idx) {
-  const tb=document.createElement('div'); tb.className='text-toolbar'; tb.id=`ttb_${idx}`;
-  tb.innerHTML=`
+  const tb = document.createElement('div'); tb.className = 'text-toolbar'; tb.id = `ttb_${idx}`;
+  tb.innerHTML = `
     <button class="tt-btn" onmousedown="event.preventDefault();xCmd('bold')" title="Bold"><b style="font-size:13px">B</b></button>
     <button class="tt-btn" onmousedown="event.preventDefault();xCmd('italic')" title="Italic"><i style="font-size:12px">I</i></button>
     <button class="tt-btn" onmousedown="event.preventDefault();xCmd('underline')" title="Underline" style="text-decoration:underline">U</button>
@@ -9,8 +9,8 @@ function mkTextToolbar(idx) {
     <div style="display:inline-block; position:relative; z-index:1000;">
       <button class="tt-btn font-size-btn" id="fsBtn_${idx}" onmousedown="event.preventDefault(); toggleFontSizeDropdown(${idx})" title="Font size" style="width:50px; font-size:12px; font-family:'DM Sans',sans-serif">${(() => { const el = slides[currentSlideIdx] && slides[currentSlideIdx].elements[idx]; const def = el && el.type === 'title' ? 36 : el && el.type === 'subtitle' ? 20 : 16; return (el && el.fontSize) || def; })()} ▾</button>
       <div class="fs-dropdown" id="fsDropdown_${idx}">
-        ${[10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 64].map(s=> `<div class="fs-opt" onmousedown="event.preventDefault(); applyCustomFontSize('${s}', ${idx})">${s}</div>`).join('')}
-        <div class="fs-opt" onmousedown="event.preventDefault(); applyCustomFontSize('custom', ${idx})">Custom...</div>
+        ${[10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 64].map(s => `<div class="fs-opt" onmousedown="event.preventDefault(); applyCustomFontSize('${s}', ${idx})">${s}</div>`).join('')}
+        <div class="fs-opt" onmousedown="event.preventDefault(); applyCustomFontSize('custom', ${idx})">more</div>
       </div>
     </div>
     <button class="palette-trigger-btn" style="background:#e8e6f0" data-hex="#e8e6f0" onclick="openColorPalette(this, this.dataset.hex, (hex)=> { this.style.background=hex; this.dataset.hex=hex; xCmd('foreColor', hex); })" title="Text color"></button>
@@ -21,7 +21,7 @@ function mkTextToolbar(idx) {
     <button class="tt-btn tt-al" onmousedown="event.preventDefault();xCmd('justifyCenter')" title="Center">☰⫿</button>
     <button class="tt-btn tt-al" onmousedown="event.preventDefault();xCmd('justifyRight')" title="Right">⫸☰</button>
   `;
-  
+
   // Initial detection
   setTimeout(() => {
     updateDynamicTextProperties(idx);
@@ -65,7 +65,7 @@ document.addEventListener('selectionchange', () => {
   }
 });
 
-function xCmd(cmd,val) { document.execCommand(cmd,false,val||null); updateTbState(); }
+function xCmd(cmd, val) { document.execCommand(cmd, false, val || null); updateTbState(); }
 
 function toggleFontSizeDropdown(idx) {
   // close others first
@@ -113,10 +113,10 @@ function applyCustomFontSize(size, btnIdx) {
 }
 
 function updateTbState() {
-  document.querySelectorAll('.tt-btn').forEach(b=>{
-    const t=b.getAttribute('title')||'';
-    if(t==='Bold') b.classList.toggle('active',document.queryCommandState('bold'));
-    if(t==='Italic') b.classList.toggle('active',document.queryCommandState('italic'));
-    if(t==='Underline') b.classList.toggle('active',document.queryCommandState('underline'));
+  document.querySelectorAll('.tt-btn').forEach(b => {
+    const t = b.getAttribute('title') || '';
+    if (t === 'Bold') b.classList.toggle('active', document.queryCommandState('bold'));
+    if (t === 'Italic') b.classList.toggle('active', document.queryCommandState('italic'));
+    if (t === 'Underline') b.classList.toggle('active', document.queryCommandState('underline'));
   });
 }
