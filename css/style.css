@@ -918,14 +918,239 @@ body {
   background-size: 6px 4px;
 }
 
-/* MATH RENDERING */
-.math-rendered {
-  cursor: text;
+/* MATH CHIPS — rendered mode (default, not editing) */
+.math-chip {
+  display: inline;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: default;
+  user-select: none;
+  vertical-align: baseline;
+  font-size: inherit;
+  line-height: normal;
+  white-space: normal;
+}
+.math-chip-block {
+  display: block;
+  text-align: center;
+  margin: 6px 0;
+}
+.math-chip-label,
+.math-chip-delete {
+  display: none;
+}
+.math-chip-preview {
+  display: inline;
   line-height: normal;
 }
-.math-rendered .katex {
-  font-size: 1em; /* scales with the text element's font-size */
+.math-chip-preview .katex {
+  font-size: 1em;
 }
+.math-chip-block .math-chip-preview .katex {
+  font-size: 1.1em;
+}
+
+/* MATH CHIPS — edit mode (container has .chip-editing) */
+.chip-editing .math-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px 1px 5px;
+  border-radius: 5px;
+  background: rgba(99, 120, 255, 0.12);
+  border: 1px solid rgba(99, 120, 255, 0.35);
+  cursor: pointer;
+  vertical-align: middle;
+  font-size: 0.85em;
+  line-height: 1.5;
+  max-width: 100%;
+  white-space: nowrap;
+}
+.chip-editing .math-chip:hover {
+  background: rgba(99, 120, 255, 0.2);
+  border-color: rgba(99, 120, 255, 0.6);
+}
+.chip-editing .math-chip-block {
+  display: flex;
+  margin: 4px auto;
+}
+.chip-editing .math-chip-label {
+  display: inline;
+  font-size: 0.75em;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: rgba(99, 120, 255, 0.9);
+  flex-shrink: 0;
+}
+.chip-editing .math-chip-preview {
+  display: inline;
+  overflow: hidden;
+  max-width: 180px;
+  text-overflow: ellipsis;
+}
+.chip-editing .math-chip-preview .katex {
+  font-size: 0.9em;
+}
+.chip-editing .math-chip-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 0 1px;
+  margin-left: 2px;
+  font-size: 0.7em;
+  color: rgba(180, 80, 80, 0.7);
+  cursor: pointer;
+  line-height: 1;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.chip-editing .math-chip-delete:hover {
+  color: rgb(220, 60, 60);
+  background: rgba(220, 60, 60, 0.1);
+}
+
+/* MATH EDITOR POPUP */
+.math-editor-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 9998;
+}
+.math-editor-popup {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 9999;
+  background: #1e2130;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.55);
+  width: min(820px, 92vw);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.math-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.03);
+}
+.math-editor-title {
+  font-size: 0.85em;
+  font-weight: 600;
+  color: rgba(255,255,255,0.75);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.math-editor-close {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.4);
+  font-size: 0.95em;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1;
+}
+.math-editor-close:hover { color: #fff; background: rgba(255,255,255,0.08); }
+.math-editor-body {
+  display: flex;
+  gap: 0;
+  min-height: 220px;
+}
+.math-editor-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px 10px;
+  gap: 6px;
+}
+.math-editor-col + .math-editor-col {
+  border-left: 1px solid rgba(255,255,255,0.07);
+  background: rgba(255,255,255,0.02);
+}
+.math-editor-label {
+  font-size: 0.72em;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.4);
+}
+.math-editor-textarea {
+  flex: 1;
+  min-height: 130px;
+  resize: vertical;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  color: #e8ecf4;
+  font-family: 'JetBrains Mono', 'Fira Mono', 'Consolas', monospace;
+  font-size: 0.88em;
+  line-height: 1.6;
+  padding: 10px 12px;
+  outline: none;
+}
+.math-editor-textarea:focus {
+  border-color: rgba(99, 120, 255, 0.55);
+  box-shadow: 0 0 0 2px rgba(99, 120, 255, 0.15);
+}
+.math-editor-hint {
+  font-size: 0.7em;
+  color: rgba(255,255,255,0.28);
+}
+.math-editor-preview {
+  flex: 1;
+  min-height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  background: rgba(0,0,0,0.15);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 6px;
+  padding: 12px;
+  color: #e8ecf4;
+  line-height: normal;
+}
+.math-editor-footer {
+  display: flex;
+  align-items: center;
+  padding: 10px 16px 12px;
+  gap: 8px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.02);
+}
+.math-editor-btn {
+  padding: 6px 16px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.8);
+  font-size: 0.83em;
+  cursor: pointer;
+  font-weight: 500;
+}
+.math-editor-btn:hover { background: rgba(255,255,255,0.12); }
+.math-editor-btn-save {
+  background: rgba(99, 120, 255, 0.25);
+  border-color: rgba(99, 120, 255, 0.5);
+  color: #c0caff;
+}
+.math-editor-btn-save:hover { background: rgba(99, 120, 255, 0.4); }
+.math-editor-btn-delete {
+  background: rgba(200, 60, 60, 0.12);
+  border-color: rgba(200, 60, 60, 0.35);
+  color: rgba(240, 120, 120, 0.9);
+}
+.math-editor-btn-delete:hover { background: rgba(200, 60, 60, 0.25); }
 
 /* TEXT ELEMENT */
 .text-element-box {

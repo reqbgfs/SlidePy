@@ -232,38 +232,50 @@ function finalizeGoHome() {
 
 async function exportPresentation(idx) {
   const list = getSavedPresentations();
-  const p = list[idx];
-  if (!p) return;
-  
-  const zip = new JSZip();
-  const name = p.name || 'Untitled';
-  
-  // Create a slides.json for the zip
+  const meta = list[idx];
+  if (!meta) return;
+
+  const zip  = new JSZip();
+  const name = meta.name || 'Untitled';
+
+  // Fetch full payload from IDB (thin meta in localStorage has no slides/packages)
+  let payload = await AssetDB.getPresentation(meta.id);
+  if (!payload) {
+    // Fallback for very old format where slides were stored directly on meta
+    payload = {
+      slides:             meta.slides             || [],
+      uploadedFiles:      meta.uploadedFiles      || {},
+      packages:           meta.packages           || DEFAULT_PACKAGES,
+      customColorHistory: meta.customColorHistory || []
+    };
+  }
+
   const metadata = {
-    title: name,
-    slides: p.slides,
-    packages: p.packages,
-    uploadedFiles: {}
+    name,
+    slides:             payload.slides,
+    packages:           payload.packages,
+    customColorHistory: payload.customColorHistory || [],
+    uploadedFiles:      {}
   };
-  
+
   const assetsFolder = zip.folder("assets");
-  const files = p.uploadedFiles || {};
-  
+  const files = payload.uploadedFiles || {};
+
   for (const fName in files) {
     metadata.uploadedFiles[fName] = { name: fName, type: files[fName].type };
     const asset = await AssetDB.getAsset(fName);
-    if (asset && asset.data.startsWith('data:')) {
-       const b64 = asset.data.split(',')[1];
-       assetsFolder.file(fName, b64, {base64: true});
+    if (asset && asset.data && asset.data.startsWith('data:')) {
+      const b64 = asset.data.split(',')[1];
+      assetsFolder.file(fName, b64, { base64: true });
     }
   }
-  
+
   zip.file("slides.json", JSON.stringify(metadata, null, 2));
-  const blob = await zip.generateAsync({type:"blob"});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = (p.name || 'presentation').replace(/\s+/g, '_') + '.pyslide.zip';
+  const blob = await zip.generateAsync({ type: "blob" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = name.replace(/\s+/g, '_') + '.pyslide.zip';
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -313,10 +325,28 @@ async function importPresentation(event) {
       }
     }
 
-    p.id = crypto.randomUUID();
-    p.savedAt = Date.now();
+    const id       = crypto.randomUUID();
+    const presName = p.name || p.title || 'Imported';
+
+    // Save full payload to IDB (mirrors what saveCurrentPresentation does)
+    const payload = {
+      slides:             p.slides             || [],
+      uploadedFiles:      p.uploadedFiles      || {},
+      packages:           p.packages           || DEFAULT_PACKAGES,
+      customColorHistory: p.customColorHistory || []
+    };
+    await AssetDB.savePresentation(id, payload);
+
+    // Save thin meta to localStorage
+    const meta = {
+      id,
+      name:        presName,
+      savedAt:     Date.now(),
+      _slideCount: payload.slides.length,
+      _pkgCount:   (payload.packages || []).length
+    };
     const list = getSavedPresentations();
-    list.push(p);
+    list.push(meta);
     savePresentationsList(list);
     renderHomeScreen();
     toast('Imported presentation!');

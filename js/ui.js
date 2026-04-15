@@ -517,22 +517,22 @@ function renderTextEl(w, el, idx, isLight) {
   renderMathInElement(c);
 
   c.addEventListener('focus', () => {
-    unrenderMathInElement(c); // restore raw LaTeX so the user edits source
+    c.classList.add('chip-editing'); // show compact chip boxes while editing
     selectEl(idx);
   });
   c.addEventListener('input', () => {
-    // While editing the math is unrendered, so innerHTML is always raw LaTeX here
-    slides[currentSlideIdx].elements[idx].content = c.innerHTML;
+    slides[currentSlideIdx].elements[idx].content = getRawMathContent(c);
     renderSidebar();
   });
   c.addEventListener('mouseup', () => setTimeout(updateTbState, 10));
   c.addEventListener('keyup',   () => setTimeout(updateTbState, 10));
   c.addEventListener('blur', (e) => {
     const toToolbar = e.relatedTarget && e.relatedTarget.closest('.text-toolbar');
+    const toPopup   = e.relatedTarget && e.relatedTarget.closest('#mathEditorPopup');
+    if (toPopup) return; // popup is taking over; keep chip-editing state
     if (!toToolbar) {
-      // Persist raw LaTeX before rendering (covers focus-without-typing)
-      slides[currentSlideIdx].elements[idx].content = c.innerHTML;
-      renderMathInElement(c);
+      c.classList.remove('chip-editing'); // back to rendered mode
+      slides[currentSlideIdx].elements[idx].content = getRawMathContent(c);
     }
   });
 
