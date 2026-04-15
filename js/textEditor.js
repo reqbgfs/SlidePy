@@ -6,7 +6,7 @@ function mkTextToolbar(idx) {
     <button class="tt-btn" onmousedown="event.preventDefault();xCmd('italic')" title="Italic"><i style="font-size:12px">I</i></button>
     <button class="tt-btn" onmousedown="event.preventDefault();xCmd('underline')" title="Underline" style="text-decoration:underline">U</button>
     <div class="tt-sep"></div>
-    <div style="display:inline-block; position:relative; z-index:1000;">
+    <div style="display:inline-block; position:relative; z-index:2600;">
       <button class="tt-btn font-size-btn" id="fsBtn_${idx}" onmousedown="event.preventDefault(); toggleFontSizeDropdown(${idx})" title="Font size" style="width:50px; font-size:12px; font-family:'DM Sans',sans-serif">${(() => { const el = slides[currentSlideIdx] && slides[currentSlideIdx].elements[idx]; const def = el && el.type === 'title' ? 36 : el && el.type === 'subtitle' ? 20 : 16; return (el && el.fontSize) || def; })()} ▾</button>
       <div class="fs-dropdown" id="fsDropdown_${idx}">
         ${[10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 64].map(s => `<div class="fs-opt" onmousedown="event.preventDefault(); applyCustomFontSize('${s}', ${idx})">${s}</div>`).join('')}

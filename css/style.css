@@ -29,6 +29,27 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-accent) var(--bg-app);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-app);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-accent);
+  border-radius: 10px;
+  border: 2px solid var(--bg-app);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
 }
 
 body {
@@ -263,14 +284,6 @@ body {
   gap: 6px;
 }
 
-.slide-list::-webkit-scrollbar {
-  width: 4px;
-}
-
-.slide-list::-webkit-scrollbar-thumb {
-  background: var(--border-accent);
-  border-radius: 4px;
-}
 
 .slide-thumb {
   position: relative;
@@ -535,14 +548,6 @@ body {
   gap: 4px;
 }
 
-.layer-list::-webkit-scrollbar {
-  width: 4px;
-}
-
-.layer-list::-webkit-scrollbar-thumb {
-  background: var(--border-accent);
-  border-radius: 4px;
-}
 
 @keyframes layer-item-pop {
   0% {
@@ -972,7 +977,7 @@ body {
   border-radius: 8px;
   padding: 3px 4px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-  z-index: 1500;
+  z-index: 2500;
   opacity: 0;
   pointer-events: none;
   transition: opacity 150ms;
@@ -1031,7 +1036,7 @@ body {
   border-radius: 4px;
   display: none;
   flex-direction: column;
-  z-index: 2000;
+  z-index: 2600;
   max-height: 180px;
   overflow-y: auto;
   width: 54px;
@@ -1448,6 +1453,30 @@ body.presenting .cell-action-btn {
   color: #107c10;
 }
 
+.jupyter-cell.cm-light .jupyter-sep-input {
+  background: #f1f1f1;
+  color: #1f1f1f;
+}
+
+/* Light mode scrollbars */
+.jupyter-cell.cm-light,
+.jupyter-cell.cm-light * {
+  scrollbar-color: #d1d1d1 #f1f1f1 !important;
+}
+
+.jupyter-cell.cm-light ::-webkit-scrollbar-track {
+  background: #f1f1f1 !important;
+}
+
+.jupyter-cell.cm-light ::-webkit-scrollbar-thumb {
+  background: #d1d1d1 !important;
+  border: 2px solid #f1f1f1 !important;
+}
+
+.jupyter-cell.cm-light ::-webkit-scrollbar-thumb:hover {
+  background: #bbb !important;
+}
+
 .jupyter-cell.cm-light .cell-output-content {
   background: #fffffe;
   color: #1f1f1f;
@@ -1797,14 +1826,6 @@ body.presenting .image-element iframe {
   padding-right: 4px;
 }
 
-.picker-grid::-webkit-scrollbar {
-  width: 4px;
-}
-
-.picker-grid::-webkit-scrollbar-thumb {
-  background: var(--border-accent);
-  border-radius: 4px;
-}
 
 .picker-item {
   background: var(--bg-card);
