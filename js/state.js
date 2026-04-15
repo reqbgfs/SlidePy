@@ -2,7 +2,7 @@
 var slides = [], currentSlideIdx = 0, pyodide = null, pyReady = false;
 var uploadedFiles = {}, codeMirrors = {}, ctxSlideIdx = -1;
 var undoStack = [], redoStack = [], selectedElIdx = -1;
-var selectedLayer = 1, presentStep = 0;
+var selectedLayer = 1, presentStep = 0, _prevActiveLayer = null;
 var workspaceZoom = 1.0;
 
 function parseTiming(str) {

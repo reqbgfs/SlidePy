@@ -21,11 +21,15 @@ function moveSlide(i, d) { const n = i + d; if (n < 0 || n >= slides.length) ret
 
 // ═══════ ELEMENTS ═══════
 const elDefaults = { borderColor: '', bgColor: '', borderWidth: 0, _bgHex: '#22222e', _bgAlpha: 0, level: 1 };
-function addElement(type, props = {}, initialContent = null) {
+async function addElement(type, props = {}, initialContent = null) {
+  const spawnLevel = (props.level !== undefined) ? props.level : selectedLayer;
+  if (spawnLevel === 0 && type !== 'image') {
+    await showAlert("Background Layer", "Only images can be placed on the background layer. Please select a different layer first.");
+    return;
+  }
+
   saveUndo();
   const els = slides[currentSlideIdx].elements;
-
-  const spawnLevel = (props.level !== undefined) ? props.level : selectedLayer;
   const finalDefaults = { ...elDefaults, level: spawnLevel, ...props };
 
   const IW = 880, IH = 460, margin = 40, gap = 20;
@@ -331,31 +335,47 @@ function renderSlide() {
     if (isPresenting) {
       if (lvl === 0) {
         isAbove = true;
+        w.classList.remove('anim-snap');
+        w.style.filter = '';
       } else {
         const timingStr = (slide.layerTiming && slide.layerTiming[lvl]) || '0-';
         const range = parseTiming(timingStr);
         isAbove = (presentStep >= range.start && presentStep <= range.end);
+        const isEntryPhase = presentStep < range.start;
+
+        // Resolve entry and exit anims
+        let entryAnim = 'fade', exitAnim = 'fade';
+        if (slide.layerAnim && slide.layerAnim[lvl]) {
+          const animData = slide.layerAnim[lvl];
+          if (typeof animData === 'string') {
+            entryAnim = exitAnim = animData;
+          } else {
+            entryAnim = animData.entry || 'fade';
+            exitAnim = animData.exit || 'fade';
+          }
+        }
+        // Phase-specific anim: entry phase uses entryAnim, exit phase uses exitAnim.
+        // When the element is visible (isAbove) the entry anim governs how it arrived.
+        const phaseAnim = isEntryPhase ? entryAnim : exitAnim;
+        const relevantAnim = isAbove ? entryAnim : phaseAnim;
 
         if (!isAbove) {
-          let anim = 'fade';
-          const isEntryPhase = presentStep < range.start;
-          if (slide.layerAnim && slide.layerAnim[lvl]) {
-            const animData = slide.layerAnim[lvl];
-            if (typeof animData === 'string') {
-              anim = animData;
-            } else {
-              anim = isEntryPhase ? (animData.entry || 'fade') : (animData.exit || 'fade');
-            }
-          }
           const offset = 600;
           // Invert the off-screen start position for entry so it slides TOWARDS the specified direction
           const dirMod = isEntryPhase ? -1 : 1;
-
-          if (anim === 'slideL') transform = `translateX(${dirMod * -offset}px)`;
-          else if (anim === 'slideR') transform = `translateX(${dirMod * offset}px)`;
-          else if (anim === 'slideU') transform = `translateY(${dirMod * -offset}px)`;
-          else if (anim === 'slideD') transform = `translateY(${dirMod * offset}px)`;
+          if (phaseAnim === 'slideL') transform = `translateX(${dirMod * -offset}px)`;
+          else if (phaseAnim === 'slideR') transform = `translateX(${dirMod * offset}px)`;
+          else if (phaseAnim === 'slideU') transform = `translateY(${dirMod * -offset}px)`;
+          else if (phaseAnim === 'slideD') transform = `translateY(${dirMod * offset}px)`;
         }
+
+        // Snap: instant cut — suppress CSS transition entirely
+        if (relevantAnim === 'snap') w.classList.add('anim-snap');
+        else w.classList.remove('anim-snap');
+
+        // Blur: apply blur filter when hidden, clear when visible
+        if (relevantAnim === 'blur') w.style.filter = isAbove ? 'blur(0px)' : 'blur(12px)';
+        else w.style.filter = '';
       }
       animZ = isAbove ? (110 + layerPriority) : (50 + layerPriority);
     }
@@ -404,6 +424,8 @@ function renderSlide() {
     } else {
       w.style.opacity = 1;
       w.style.transform = '';
+      w.style.filter = '';
+      w.classList.remove('anim-snap');
       // jupyter-output wrapper is always pointer-events:none in editor mode so it
       // never blocks the input's drag/resize handles. The Clear button inside sets
       // its own pointer-events:auto so it stays clickable when in the foreground.
@@ -1130,6 +1152,18 @@ function closeConfirm(val) {
   if (confirmResolve) { confirmResolve(val); confirmResolve = null; }
 }
 
+// Returns true if moving `el` onto `targetLvl` would create a collision.
+// Images only collide with other images; all other types collide with each other.
+function hasLayerCollision(el, targetLvl, slide) {
+  const isImage = el.type === 'image';
+  return slide.elements.some(e => {
+    if (e === el) return false;
+    if ((e.level !== undefined ? parseInt(e.level) : 1) !== targetLvl) return false;
+    const eIsImage = e.type === 'image';
+    return isImage ? eIsImage : !eIsImage;
+  });
+}
+
 async function changeLevel(idx, dir) {
   saveUndo();
   const slide = slides[currentSlideIdx];
@@ -1157,7 +1191,18 @@ async function changeLevel(idx, dir) {
         }
       }
     } else {
-      el.level = layers[targetIdx];
+      const targetLvl = layers[targetIdx];
+      if (hasLayerCollision(el, targetLvl, slide)) {
+        if (await showConfirm("Layer Occupied", "Moving here would overlap with an existing element. Create a new layer in between?", "Create Layer")) {
+          const newLvl = Math.max(...layers) + 1;
+          layers.splice(curIdx, 0, newLvl); // insert between targetIdx and curIdx
+          el.level = newLvl;
+        } else {
+          return; // Cancelled
+        }
+      } else {
+        el.level = targetLvl;
+      }
     }
   }
   // Move UP
@@ -1175,7 +1220,18 @@ async function changeLevel(idx, dir) {
         return; // Cancelled
       }
     } else {
-      el.level = layers[targetIdx];
+      const targetLvl = layers[targetIdx];
+      if (hasLayerCollision(el, targetLvl, slide)) {
+        if (await showConfirm("Layer Occupied", "Moving here would overlap with an existing element. Create a new layer in between?", "Create Layer")) {
+          const newLvl = Math.max(...layers) + 1;
+          layers.splice(targetIdx, 0, newLvl); // insert between curIdx and targetIdx
+          el.level = newLvl;
+        } else {
+          return; // Cancelled
+        }
+      } else {
+        el.level = targetLvl;
+      }
     }
   }
 
@@ -1193,10 +1249,13 @@ function renderLayerList() {
   const layers = slide.layers || [0, 1];
   const hidden = slide.hiddenLayers || [];
 
+  const justSelected = selectedLayer !== _prevActiveLayer;
+  _prevActiveLayer = selectedLayer;
+
   layers.forEach((lvl, i) => {
     const item = document.createElement('div');
     const isActive = parseInt(selectedLayer) === lvl;
-    item.className = 'layer-item' + (isActive ? ' active' : '');
+    item.className = 'layer-item' + (isActive ? ' active' : '') + (isActive && justSelected ? ' just-selected' : '');
     item.onclick = (e) => {
       if (e.target.closest('.layer-controls')) return;
       selectLayer(lvl);
@@ -1211,7 +1270,7 @@ function renderLayerList() {
     const animObj = (slide.layerAnim && slide.layerAnim[lvl]) || { entry: 'fade', exit: 'fade' };
     const entryAnim = (typeof animObj === 'string') ? animObj : (animObj.entry || 'fade');
     const exitAnim = (typeof animObj === 'string') ? animObj : (animObj.exit || 'fade');
-    const animIcons = { 'fade': '◌', 'slideL': '←', 'slideR': '→', 'slideU': '↑', 'slideD': '↓' };
+    const animIcons = { 'fade': '◌', 'snap': '●', 'blur': '◉', 'slideL': '←', 'slideR': '→', 'slideU': '↑', 'slideD': '↓' };
 
     item.innerHTML = `
       <div class="layer-controls">
@@ -1259,7 +1318,7 @@ function updateLayerAnim(lvl, phase) {
   }
 
   const current = slide.layerAnim[lvl][phase] || 'fade';
-  const order = ['fade', 'slideL', 'slideR', 'slideU', 'slideD'];
+  const order = ['fade', 'slideL', 'slideR', 'slideU', 'slideD', 'snap', 'blur'];
   const next = order[(order.indexOf(current) + 1) % order.length];
   slide.layerAnim[lvl][phase] = next;
   renderLayerList();

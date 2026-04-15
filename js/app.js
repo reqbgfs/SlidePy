@@ -25,7 +25,14 @@ function init() {
 
 document.addEventListener('keydown',(e)=>{
   if(document.body.classList.contains('presenting'))return;
-  if(e.ctrlKey||e.metaKey){ if(e.key==='z'&&!e.shiftKey){e.preventDefault();undo();} if(e.key==='z'&&e.shiftKey){e.preventDefault();redo();} if(e.key==='y'){e.preventDefault();redo();} if(e.key==='s'){e.preventDefault();saveCurrentPresentation();} }
+  if(e.ctrlKey||e.metaKey){
+    const inCM = e.target.closest('.cm-editor');
+    if((e.key==='z'||e.key==='y')&&inCM) return; // let CodeMirror handle its own undo/redo
+    if(e.key==='z'&&!e.shiftKey){e.preventDefault();undo();}
+    if(e.key==='z'&&e.shiftKey){e.preventDefault();redo();}
+    if(e.key==='y'){e.preventDefault();redo();}
+    if(e.key==='s'){e.preventDefault();saveCurrentPresentation();}
+  }
   if((e.key==='Delete'||e.key==='Backspace')&&selectedElIdx!==-1){ const a=document.activeElement; if(a&&(a.contentEditable==='true'||a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.closest('.CodeMirror')))return; e.preventDefault(); removeElement(selectedElIdx); }
 });
 
