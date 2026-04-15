@@ -354,16 +354,32 @@ function renderSlide() {
       animZ = isAbove ? (110 + layerPriority) : (50 + layerPriority);
     }
 
-    const z = isPresenting ? animZ : ((50 + (layerPriority === -1 ? 0 : layerPriority) * 20) + 
-              (parseInt(selectedLayer) === lvl ? 200 : 0) + 
-              (idx === selectedElIdx ? 500 : 0));
-    
+    // jupyter-output gets boosted z when visible (both modes), lowered when behind
+    if (isPresenting && el.type === 'jupyter-output' && el.outputVisible) animZ += 10;
+    const outputEditorZ = el.type === 'jupyter-output' ? (el.outputVisible ? 15 : -5) : 0;
+    const z = isPresenting ? animZ : ((50 + (layerPriority === -1 ? 0 : layerPriority) * 20) +
+              (parseInt(selectedLayer) === lvl ? 200 : 0) +
+              (idx === selectedElIdx ? 500 : 0) + outputEditorZ);
+
     // Update wrapper position and basic layer styles
     w.style.left = `${el.x || 0}px`;
     w.style.top = `${el.y || 0}px`;
     w.style.width = `${el.w || 300}px`;
     w.style.height = `${el.h || 80}px`;
     w.style.zIndex = z;
+
+    // jupyter-output always mirrors its linked input's bounds exactly
+    if (el.type === 'jupyter-output' && el.linkId) {
+      const linkedInput = slide.elements.find(e => e.type === 'jupyter-input' && e.linkId === el.linkId);
+      if (linkedInput) {
+        el.x = linkedInput.x; el.y = linkedInput.y;
+        el.w = linkedInput.w; el.h = linkedInput.h;
+        w.style.left = `${linkedInput.x}px`;
+        w.style.top = `${linkedInput.y}px`;
+        w.style.width = `${linkedInput.w}px`;
+        w.style.height = `${linkedInput.h}px`;
+      }
+    }
 
     if (isPresenting) {
       if (isAbove) w.classList.remove('exiting');
@@ -374,10 +390,21 @@ function renderSlide() {
       w.style.visibility = isAbove ? 'visible' : 'hidden';
       w.style.pointerEvents = isAbove ? 'auto' : 'none';
       if (isNew) w.style.transition = 'none'; // Ensure new items don't animate their first frame
+      // jupyter-output: hidden until code runs, shown when outputVisible
+      if (el.type === 'jupyter-output') {
+        const show = isAbove && !!el.outputVisible;
+        w.style.visibility = show ? 'visible' : 'hidden';
+        w.style.pointerEvents = show ? 'auto' : 'none';
+      }
     } else {
       w.style.opacity = 1;
       w.style.transform = '';
-      w.style.pointerEvents = 'auto';
+      // jupyter-output: block pointer events when behind input, allow when in foreground
+      if (el.type === 'jupyter-output') {
+        w.style.pointerEvents = el.outputVisible ? 'auto' : 'none';
+      } else {
+        w.style.pointerEvents = 'auto';
+      }
       w.style.transition = '';
       w.style.visibility = 'visible';
     }
@@ -389,38 +416,43 @@ function renderSlide() {
     // Only rebuild inner contents if NEW or in Editor Mode
     if (isNew || !isPresenting) {
       w.innerHTML = '';
-      if (idx === selectedElIdx) { const sb = document.createElement('div'); sb.className = 'sel-border'; w.appendChild(sb); }
 
-      w.innerHTML += `<div class="el-actions-free"><button onclick="event.stopPropagation();duplicateElement(${idx})" title="Duplicate" style="background:var(--bg-card)">📋</button><button onclick="event.stopPropagation();removeElement(${idx})" title="Remove">✕</button></div>`;
+      if (el.type === 'jupyter-output') {
+        // Output cell: content only, no drag/resize/action controls
+        renderJupyterOutputEl(w, el, idx);
+      } else {
+        if (idx === selectedElIdx) { const sb = document.createElement('div'); sb.className = 'sel-border'; w.appendChild(sb); }
 
-      // Drag header
-      const dh = document.createElement('div'); dh.className = 'drag-header';
-      dh.innerHTML = '<span class="dots"></span>';
-      dh.addEventListener('mousedown', (e) => { e.preventDefault(); selectEl(idx); startDrag(e, idx); });
-      w.appendChild(dh);
+        w.innerHTML += `<div class="el-actions-free"><button onclick="event.stopPropagation();duplicateElement(${idx})" title="Duplicate" style="background:var(--bg-card)">📋</button><button onclick="event.stopPropagation();removeElement(${idx})" title="Remove">✕</button></div>`;
 
-      // Universal selection click
-      w.addEventListener('mousedown', (e) => {
-        if (e.target.closest('.el-actions-free') || e.target.closest('.resize-handle') || e.target.closest('.drag-header')) return;
-        selectEl(idx);
-      });
+        // Drag header
+        const dh = document.createElement('div'); dh.className = 'drag-header';
+        dh.innerHTML = '<span class="dots"></span>';
+        dh.addEventListener('mousedown', (e) => { e.preventDefault(); selectEl(idx); startDrag(e, idx); });
+        w.appendChild(dh);
 
-      // Resize
-      const rh = document.createElement('div'); rh.className = 'resize-handle';
-      rh.addEventListener('mousedown', (e) => startResize(e, idx));
-      w.appendChild(rh);
+        // Universal selection click
+        w.addEventListener('mousedown', (e) => {
+          if (e.target.closest('.el-actions-free') || e.target.closest('.resize-handle') || e.target.closest('.drag-header')) return;
+          selectEl(idx);
+        });
 
-      // Resize NW
-      const rhNW = document.createElement('div'); rhNW.className = 'resize-handle resize-nw';
-      rhNW.addEventListener('mousedown', (e) => startResize(e, idx, 'nw'));
-      w.appendChild(rhNW);
+        // Resize
+        const rh = document.createElement('div'); rh.className = 'resize-handle';
+        rh.addEventListener('mousedown', (e) => startResize(e, idx));
+        w.appendChild(rh);
 
-      if (el.type === 'title' || el.type === 'subtitle' || el.type === 'body') renderTextEl(w, el, idx, isLight);
-      else if (el.type === 'image') renderImageEl(w, el, idx);
-      else if (el.type === 'jupyter') renderJupyterEl(w, el, idx);
-      else if (el.type === 'jupyter-input') renderJupyterInputEl(w, el, idx);
-      else if (el.type === 'jupyter-output') renderJupyterOutputEl(w, el, idx);
-      
+        // Resize NW
+        const rhNW = document.createElement('div'); rhNW.className = 'resize-handle resize-nw';
+        rhNW.addEventListener('mousedown', (e) => startResize(e, idx, 'nw'));
+        w.appendChild(rhNW);
+
+        if (el.type === 'title' || el.type === 'subtitle' || el.type === 'body') renderTextEl(w, el, idx, isLight);
+        else if (el.type === 'image') renderImageEl(w, el, idx);
+        else if (el.type === 'jupyter') renderJupyterEl(w, el, idx);
+        else if (el.type === 'jupyter-input') renderJupyterInputEl(w, el, idx);
+      }
+
       if (isNew) canvas.appendChild(w);
     }
   });
@@ -744,34 +776,59 @@ function renderJupyterEl(w, el, idx) {
   const cmId = `cm_${currentSlideIdx}_${idx}`;
   const cell = document.createElement('div'); cell.className = 'jupyter-cell cm6-bundled';
   const ratio = el.codeRatio || 0.6;
-  
-  cell.innerHTML = `
-    <div class="cell-code-side" style="flex: ${ratio}">
-      <div class="cell-code-header">
-        <span class="cell-code-label"><span class="py-dot"></span>Python</span>
-        <div class="cell-controls">
-          <button class="run-btn" id="runBtn_${idx}" onclick="event.stopPropagation();runCell(${idx})">▶ Run</button>
-          <button class="cell-action-btn" onclick="event.stopPropagation();separateCell(${idx})" title="Separate Input/Output">◩ Separate</button>
+  const outputSuppressed = ratio >= 0.98;
+
+  if (outputSuppressed) {
+    cell.innerHTML = `
+      <div class="cell-code-side" style="flex:1">
+        <div class="cell-code-header">
+          <span class="cell-code-label"><span class="py-dot"></span>Python</span>
+          <div class="cell-controls">
+            <button class="run-btn" id="runBtn_${idx}" onclick="event.stopPropagation();runCell(${idx})">▶ Run</button>
+          </div>
+        </div>
+        <div class="cell-code-editor" id="editor_${cmId}"></div>
+      </div>
+      <div class="cell-divider" onclick="event.stopPropagation()" title="Drag to restore output"></div>
+      <div class="cell-output-side" style="flex:0;min-width:0;overflow:hidden;width:0">
+        <div class="cell-output-header">
+          <span class="cell-output-label">⬡ Output</span>
+          <button class="clear-output-btn" onclick="event.stopPropagation();clearOutput(${idx})">✕ Clear</button>
+        </div>
+        <div class="cell-output-content" id="output_${idx}">
+          ${el.output || '<span style="color:var(--text-muted)">Run code to see output...</span>'}
         </div>
       </div>
-      <div class="cell-code-editor" id="editor_${cmId}"></div>
-    </div>
-    <div class="cell-divider" onclick="event.stopPropagation()"></div>
-    <div class="cell-output-side" style="flex: ${1 - ratio}">
-      <div class="cell-output-header">
-        <span class="cell-output-label">⬡ Output</span>
-        <button class="clear-output-btn" onclick="event.stopPropagation();clearOutput(${idx})">✕ Clear</button>
+    `;
+  } else {
+    cell.innerHTML = `
+      <div class="cell-code-side" style="flex: ${ratio}">
+        <div class="cell-code-header">
+          <span class="cell-code-label"><span class="py-dot"></span>Python</span>
+          <div class="cell-controls">
+            <button class="run-btn" id="runBtn_${idx}" onclick="event.stopPropagation();runCell(${idx})">▶ Run</button>
+            <button class="cell-action-btn" onclick="event.stopPropagation();separateCell(${idx})" title="Separate Input/Output">◩ Separate</button>
+          </div>
+        </div>
+        <div class="cell-code-editor" id="editor_${cmId}"></div>
       </div>
-      <div class="cell-output-content" id="output_${idx}">
-        ${el.output || '<span style="color:var(--text-muted)">Run code to see output...</span>'}
+      <div class="cell-divider" onclick="event.stopPropagation()"></div>
+      <div class="cell-output-side" style="flex: ${1 - ratio}">
+        <div class="cell-output-header">
+          <span class="cell-output-label">⬡ Output</span>
+          <button class="clear-output-btn" onclick="event.stopPropagation();clearOutput(${idx})">✕ Clear</button>
+        </div>
+        <div class="cell-output-content" id="output_${idx}">
+          ${el.output || '<span style="color:var(--text-muted)">Run code to see output...</span>'}
+        </div>
       </div>
-    </div>
-  `;
+    `;
+  }
   w.appendChild(cell);
 
   if (!document.body.classList.contains('presenting')) {
     const divider = cell.querySelector('.cell-divider');
-    divider.addEventListener('mousedown', (e) => { e.stopPropagation(); startCellRatioResize(e, idx); });
+    if (divider) divider.addEventListener('mousedown', (e) => { e.stopPropagation(); startCellRatioResize(e, idx); });
   }
 
   requestAnimationFrame(() => {
@@ -787,7 +844,7 @@ function renderJupyterInputEl(w, el, idx) {
   cell.innerHTML = `
     <div class="cell-code-side" style="flex:1">
       <div class="cell-code-header">
-        <span class="cell-code-label"><span class="py-dot"></span>Input</span>
+        <span class="cell-code-label"><span class="py-dot"></span>Python</span>
         <div class="cell-controls">
           <button class="run-btn" id="runBtn_${idx}" onclick="event.stopPropagation();runCell(${idx})">▶ Run</button>
           <button class="cell-action-btn" onclick="event.stopPropagation();mergeCell(${idx})" title="Merge with Output">◪ Merge</button>
@@ -810,8 +867,7 @@ function renderJupyterOutputEl(w, el, idx) {
       <div class="cell-output-header">
         <span class="cell-output-label">⬡ Output</span>
         <div class="cell-controls">
-          <button class="clear-output-btn" onclick="event.stopPropagation();clearOutput(${idx})">✕ Clear</button>
-          <button class="cell-action-btn" onclick="event.stopPropagation();mergeCell(${idx})" title="Merge with Input">◪ Merge</button>
+          <button class="clear-output-btn" onclick="event.stopPropagation();clearOutput(${idx})" title="Clear Output">✕</button>
         </div>
       </div>
       <div class="cell-output-content" id="output_${idx}">
@@ -827,22 +883,18 @@ function separateCell(i) {
   const els = slides[currentSlideIdx].elements;
   const el = els[i];
   const linkId = genId();
-  
-  const ratio = el.codeRatio || 0.6;
-  const gap = 20;
-  
+
   const inputEl = {
     ...JSON.parse(JSON.stringify(el)),
     type: 'jupyter-input',
-    w: el.w * ratio,
     linkId
   };
-  
+
   const outputEl = {
     ...JSON.parse(JSON.stringify(el)),
     type: 'jupyter-output',
-    x: el.x + el.w * ratio + gap,
-    w: el.w * (1 - ratio),
+    output: el.output || '',
+    outputVisible: !!(el.output && el.output.trim() && !el.output.includes('Run code to see output')),
     linkId
   };
 
@@ -868,17 +920,10 @@ function mergeCell(i) {
     const input = el.type === 'jupyter-input' ? el : p;
     const output = el.type === 'jupyter-output' ? el : p;
     
-    // Bounds: encompass both
-    const x = Math.min(input.x, output.x);
-    const y = Math.min(input.y, output.y);
-    const r = Math.max(input.x + input.w, output.x + output.w);
-    const b = Math.max(input.y + input.h, output.y + output.h);
-    
     const newEl = {
       ...input,
       type: 'jupyter',
-      x, y, w: r - x, h: b - y,
-      codeRatio: input.w / (r - x),
+      codeRatio: input.codeRatio || 0.6,
       output: output.output
     };
     delete newEl.linkId;
@@ -912,28 +957,35 @@ function startCellRatioResize(e, idx) {
     const deltaX = (ev.clientX - startX) / workspaceZoom;
     let newRatio = startRatio + (deltaX / (width / workspaceZoom));
     
-    // Snapping points (1:1, 3:2, 2:3, 1:3, 3:1)
-    const snaps = [0.25, 0.4, 0.5, 0.6, 0.75];
+    // Snapping points — including 1.0 to fully suppress output
+    const snaps = [0.25, 0.4, 0.5, 0.6, 0.75, 1.0];
     for (const snap of snaps) {
-      if (Math.abs(newRatio - snap) < 0.03) {
+      if (Math.abs(newRatio - snap) < (snap >= 0.98 ? 0.04 : 0.03)) {
         newRatio = snap;
         break;
       }
     }
-    
-    // Clamp (Restrict to range 1:3 to 3:1)
-    newRatio = Math.max(0.25, Math.min(0.75, newRatio));
-    
+
+    // Clamp: allow full suppression of output at 1.0
+    newRatio = Math.max(0.25, Math.min(1.0, newRatio));
+
     el.codeRatio = newRatio;
-    
+    const outputSuppressed = newRatio >= 0.98;
+
     // Live update flex without full re-render for performance
     const codeSide = wrapper.querySelector('.cell-code-side');
     const outSide = wrapper.querySelector('.cell-output-side');
-    if (codeSide && outSide) {
-      codeSide.style.flex = newRatio;
-      outSide.style.flex = 1 - newRatio;
+    const divider = wrapper.querySelector('.cell-divider');
+    if (outputSuppressed) {
+      if (codeSide) { codeSide.style.flex = '1'; }
+      if (outSide)  { outSide.style.flex = '0'; outSide.style.minWidth = '0'; outSide.style.width = '0'; outSide.style.overflow = 'hidden'; }
+      // Keep divider visible so user can drag it back
+    } else {
+      if (codeSide) { codeSide.style.flex = String(newRatio); }
+      if (outSide)  { outSide.style.flex = String(1 - newRatio); outSide.style.width = ''; outSide.style.minWidth = ''; outSide.style.overflow = ''; }
+      if (divider)  { divider.style.display = ''; }
     }
-    
+
     // Refresh CodeMirror to fit new width
     const cmId = `cm_${currentSlideIdx}_${idx}`;
     // CM6 automatically handles layout changes
@@ -943,11 +995,21 @@ function startCellRatioResize(e, idx) {
     document.removeEventListener('mousemove', onMove);
     document.removeEventListener('mouseup', onUp);
     document.body.classList.remove('resizing-ratio');
+    renderSlide(); // Re-render to show/hide buttons after suppression change
     saveCurrentPresentation();
   };
-  
+
   document.addEventListener('mousemove', onMove);
   document.addEventListener('mouseup', onUp);
+}
+
+function clearLinkedOutput(inputIdx) {
+  const el = slides[currentSlideIdx].elements[inputIdx];
+  if (!el || !el.linkId) return;
+  const outputIdx = slides[currentSlideIdx].elements.findIndex(
+    (e, k) => k !== inputIdx && e.linkId === el.linkId && e.type === 'jupyter-output'
+  );
+  if (outputIdx !== -1) clearOutput(outputIdx);
 }
 
 // ═══════ STYLE PANEL ═══════

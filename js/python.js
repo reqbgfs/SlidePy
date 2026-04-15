@@ -223,13 +223,23 @@ if os.path.dirname(site_pkg) not in sys.path:
 async function runCell(i) {
   if(!pyReady){toast('Python loading...');return;}
   const el=slides[currentSlideIdx].elements[i];
-  const view = codeMirrors[`cm_${currentSlideIdx}_${i}`]; 
+  const view = codeMirrors[`cm_${currentSlideIdx}_${i}`];
   if (view && view.state) {
       el.code = view.state.doc.toString();
   }
-  const btn=document.getElementById(`runBtn_${i}`), out=document.getElementById(`output_${i}`);
+
+  // When separated, the output lives in the linked jupyter-output element.
+  let outputEl = el;
+  let outputIdx = i;
+  if (el.type === 'jupyter-input' && el.linkId) {
+    const els = slides[currentSlideIdx].elements;
+    const j = els.findIndex((e, k) => k !== i && e.linkId === el.linkId && e.type === 'jupyter-output');
+    if (j !== -1) { outputEl = els[j]; outputIdx = j; }
+  }
+
+  const btn=document.getElementById(`runBtn_${i}`), out=document.getElementById(`output_${outputIdx}`);
   btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Running';
-  out.innerHTML='<span style="color:var(--text-muted)">Executing...</span>';
+  if (out) out.innerHTML='<span style="color:var(--text-muted)">Executing...</span>';
   try {
     const presId = (typeof activePresentationId !== 'undefined' && activePresentationId) ? activePresentationId : 'default';
     const baseDir = `/IDBFS/${presId}`;
@@ -265,9 +275,30 @@ async function runCell(i) {
     if(stdout) html+=`<span class="stdout">${escHtml(stdout)}</span>`;
     if(hasPlot){const img=pyodide.runPython(`import base64\nbuf=io.BytesIO()\n_plt_internal.savefig(buf,format='png',dpi=120,bbox_inches='tight',facecolor='#1c1c26',edgecolor='none')\nbuf.seek(0)\n_img_b64=base64.b64encode(buf.read()).decode('utf-8')\n_plt_internal.close('all')\n_img_b64`);html+=`<img src="data:image/png;base64,${img}">`;}
     if(!html) html='<span style="color:var(--text-muted)">No output</span>';
-    out.innerHTML=html; el.output=html;
+    if (out) out.innerHTML=html; outputEl.output=html; outputEl.outputVisible=true;
     pyodide.runPython(`sys.stdout=sys.__stdout__;sys.stderr=sys.__stderr__`);
-  } catch(e){ out.innerHTML=`<span class="error">${escHtml(e.message)}</span>`; el.output=out.innerHTML; try{pyodide.runPython(`sys.stdout=sys.__stdout__;sys.stderr=sys.__stderr__`);}catch(_){} }
+  } catch(e){
+    const errHtml=`<span class="error">${escHtml(e.message)}</span>`;
+    if (out) out.innerHTML=errHtml;
+    outputEl.output=errHtml; outputEl.outputVisible=true;
+    try{pyodide.runPython(`sys.stdout=sys.__stdout__;sys.stderr=sys.__stderr__`);}catch(_){}
+  }
+  // Reveal separated output cell wrapper
+  if (outputIdx !== i) {
+    const outWrapper = document.querySelector(`[data-el-idx="${outputIdx}"]`);
+    const inWrapper = document.querySelector(`[data-el-idx="${i}"]`);
+    if (outWrapper) {
+      outWrapper.style.visibility = 'visible';
+      outWrapper.style.pointerEvents = 'auto';
+      if (document.body.classList.contains('presenting')) {
+        outWrapper.style.zIndex = String(parseInt(outWrapper.style.zIndex || '110') + 10);
+      } else {
+        // Editor: boost above input so Clear button is accessible
+        const inputZ = inWrapper ? parseInt(inWrapper.style.zIndex || '50') : 50;
+        outWrapper.style.zIndex = String(inputZ + 10);
+      }
+    }
+  }
   btn.disabled=false; btn.innerHTML='▶ Run';
 }
 
@@ -281,9 +312,36 @@ function base64ToUint8(b64) {
 }
 
 function clearOutput(i) {
-  const out=document.getElementById(`output_${i}`);
-  if(out) out.innerHTML='<span style="color:var(--text-muted)">Run code to see output...</span>';
-  slides[currentSlideIdx].elements[i].output='';
+  const el = slides[currentSlideIdx].elements[i];
+  const out = document.getElementById(`output_${i}`);
+  const placeholder = el && el.type === 'jupyter-output' ? 'Results...' : 'Run code to see output...';
+  if (out) out.innerHTML = `<span style="color:var(--text-muted)">${placeholder}</span>`;
+  if (el) { el.output = ''; el.outputVisible = false; }
+  if (el && el.type === 'jupyter-output') {
+    const wrapper = document.querySelector(`[data-el-idx="${i}"]`);
+    if (wrapper) {
+      const isPresenting = document.body.classList.contains('presenting');
+      if (isPresenting) {
+        // Presentation: hide completely
+        wrapper.style.visibility = 'hidden';
+        wrapper.style.pointerEvents = 'none';
+      } else {
+        // Editor: send back behind input (visible but lower z-index, no pointer events)
+        wrapper.style.pointerEvents = 'none';
+        const linkedInput = slides[currentSlideIdx].elements.find(
+          (e, k) => k !== i && e.linkId === el.linkId && e.type === 'jupyter-input'
+        );
+        if (linkedInput) {
+          const linkedIdx = slides[currentSlideIdx].elements.indexOf(linkedInput);
+          const inWrapper = document.querySelector(`[data-el-idx="${linkedIdx}"]`);
+          const inputZ = inWrapper ? parseInt(inWrapper.style.zIndex || '50') : 50;
+          wrapper.style.zIndex = String(inputZ - 10);
+        } else {
+          wrapper.style.zIndex = String(parseInt(wrapper.style.zIndex || '60') - 20);
+        }
+      }
+    }
+  }
 }
 
 // ═══════ UPLOAD ═══════

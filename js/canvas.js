@@ -43,6 +43,8 @@ function checkOverlap(testRect, skipIdx) {
     if ((e.level !== undefined ? e.level : 1) !== skipLevel) continue;
     // Multimedia elements are allowed to overlap as backgrounds or layers
     if (e.type === 'image' || (skipEl && skipEl.type === 'image')) continue;
+    // jupyter-output always overlaps its linked input by design — skip for collision
+    if (e.type === 'jupyter-output') continue;
     const r = getRect(e);
     const overlap = !(testRect.r <= r.l || testRect.l >= r.r || testRect.b <= r.t || testRect.t >= r.b);
     if (overlap) return true;
@@ -244,13 +246,22 @@ function startDrag(e, idx) {
       el.x = targetX;
       el.y = targetY;
       if (wr) { wr.style.left = el.x + 'px'; wr.style.top = el.y + 'px'; }
+      // Mirror position to linked jupyter-output wrapper
+      if (el.type === 'jupyter-input' && el.linkId) {
+        const els = slides[currentSlideIdx].elements;
+        const outIdx = els.findIndex((e, j) => j !== idx && e.linkId === el.linkId && e.type === 'jupyter-output');
+        if (outIdx !== -1) {
+          const outWr = document.querySelector(`[data-el-idx="${outIdx}"]`);
+          if (outWr) { outWr.style.left = el.x + 'px'; outWr.style.top = el.y + 'px'; }
+        }
+      }
     }
   };
-  
-  const onUp = () => { 
+
+  const onUp = () => {
     clearGuides();
     updateWorkspaceBounds();
-    if (wr) wr.classList.remove('dragging-el'); 
+    if (wr) wr.classList.remove('dragging-el');
     if (canvas) canvas.classList.remove('resizing-mode');
     document.removeEventListener('mousemove', onMove); 
     document.removeEventListener('mouseup', onUp); 
@@ -270,6 +281,8 @@ function getSlackGraph(els, dir, skipIdx) {
       
       const elU = els[u];
       const elV = els[v];
+      // jupyter-output cells are always mirrored to their input — exclude from cascade
+      if (elU.type === 'jupyter-output' || elV.type === 'jupyter-output') continue;
       if ((elU.level !== undefined ? elU.level : 1) !== (elV.level !== undefined ? elV.level : 1)) continue;
       
       if (dir === 'right') {
@@ -462,17 +475,25 @@ function startResize(e, idx, corner = 'se') {
         if (snap.snappedY !== null) { targetH = snap.snappedY - el.y; showGuide('h', snap.guideY); }
       }
       const isOverlap = checkOverlap({ l: el.x, r: el.x + targetW, t: el.y, b: el.y + targetH }, idx);
-      
+
       if (!isOverlap) {
         el.w = targetW;
         el.h = targetH;
-        if (wr) { 
-          wr.style.width = el.w + 'px'; wr.style.height = el.h + 'px'; 
+        if (wr) {
+          wr.style.width = el.w + 'px'; wr.style.height = el.h + 'px';
           // Live scale for HTML widgets
           const iframe = wr.querySelector('iframe');
           if (iframe) {
             const scale = el.w / (el.naturalW || 960);
             iframe.style.transform = `scale(${scale})`;
+          }
+        }
+        // Mirror size to linked jupyter-output wrapper
+        if (el.type === 'jupyter-input' && el.linkId) {
+          const outIdx = slides[currentSlideIdx].elements.findIndex((e, j) => j !== idx && e.linkId === el.linkId && e.type === 'jupyter-output');
+          if (outIdx !== -1) {
+            const outWr = document.querySelector(`[data-el-idx="${outIdx}"]`);
+            if (outWr) { outWr.style.width = el.w + 'px'; outWr.style.height = el.h + 'px'; }
           }
         }
       }
@@ -595,14 +616,22 @@ function startResize(e, idx, corner = 'se') {
         el.y = targetY;
         el.w = targetW;
         el.h = targetH;
-        if (wr) { 
-          wr.style.left = el.x + 'px'; wr.style.top = el.y + 'px'; 
-          wr.style.width = el.w + 'px'; wr.style.height = el.h + 'px'; 
+        if (wr) {
+          wr.style.left = el.x + 'px'; wr.style.top = el.y + 'px';
+          wr.style.width = el.w + 'px'; wr.style.height = el.h + 'px';
           // Live scale for HTML widgets
           const iframe = wr.querySelector('iframe');
           if (iframe) {
             const scale = el.w / (el.naturalW || 960);
             iframe.style.transform = `scale(${scale})`;
+          }
+        }
+        // Mirror position+size to linked jupyter-output wrapper
+        if (el.type === 'jupyter-input' && el.linkId) {
+          const outIdx = slides[currentSlideIdx].elements.findIndex((e, j) => j !== idx && e.linkId === el.linkId && e.type === 'jupyter-output');
+          if (outIdx !== -1) {
+            const outWr = document.querySelector(`[data-el-idx="${outIdx}"]`);
+            if (outWr) { outWr.style.left = el.x + 'px'; outWr.style.top = el.y + 'px'; outWr.style.width = el.w + 'px'; outWr.style.height = el.h + 'px'; }
           }
         }
       }
