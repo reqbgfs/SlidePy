@@ -40,7 +40,7 @@ function addElement(type, props = {}, initialContent = null) {
     for (let e of els) {
       if (exclude && e === exclude) continue;
       if ((e.level !== undefined ? e.level : 1) !== spawnLevel) continue;
-      
+
       // Media elements ignore text/jupyter elements during spawn collision
       if (type === 'image' && e.type !== 'image') continue;
 
@@ -200,10 +200,10 @@ function addAlert(variant) {
   };
   const s = styles[variant];
   const content = `${s.icon} <b style="color:${s.borderColor}">${s.label}</b> ${s.icon}&nbsp; `;
-  addElement('body', { 
-    borderColor: s.borderColor, 
-    _bgHex: s._bgHex, 
-    _bgAlpha: s._bgAlpha, 
+  addElement('body', {
+    borderColor: s.borderColor,
+    _bgHex: s._bgHex,
+    _bgAlpha: s._bgAlpha,
     borderWidth: s.borderWidth,
     bgColor: hexToRgba(s._bgHex, s._bgAlpha)
   }, content);
@@ -226,10 +226,10 @@ function duplicateElement(i) {
 
 function onCanvasMouseDown(e) {
   if (e.target.id === 'slideCanvas' || e.target.id === 'canvasWrapper' || e.target.id === 'workspace') {
-    if (selectedElIdx !== -1) { 
+    if (selectedElIdx !== -1) {
       if (typeof closeColorPalette === 'function') closeColorPalette();
-      selectedElIdx = -1; 
-      renderSlide(); 
+      selectedElIdx = -1;
+      renderSlide();
     }
   }
 }
@@ -278,17 +278,20 @@ function renderSlide() {
   const isPresenting = document.body.classList.contains('presenting');
   const wasPresenting = canvas.dataset.wasPresenting === 'true';
 
-  // Clear everything if slide ID changed or mode changed to Presenting for absolute state reset
+  // Apply background and sync UI
+  canvas.style.background = slide.bg;
+  const bgSelect = document.getElementById('bgSelect');
+  if (bgSelect) bgSelect.value = slide.bg;
+
   if (canvas.dataset.activeSlideId !== slide.id) {
     canvas.innerHTML = '';
     canvas.dataset.activeSlideId = slide.id;
-    canvas.style.background = slide.bg;
     codeMirrors = {};
   }
 
   if (isPresenting) updatePC();
   canvas.dataset.wasPresenting = isPresenting;
-  
+
   const layerSeq = slide.layers || [0, 1];
   const hiddenLevels = slide.hiddenLayers || [];
 
@@ -299,10 +302,10 @@ function renderSlide() {
   }
   const isLight = isLightColor(slide.bg);
 
-    const isEnteringPresent = isPresenting && !wasPresenting;
-    if (isEnteringPresent) canvas.classList.add('no-anim');
+  const isEnteringPresent = isPresenting && !wasPresenting;
+  if (isEnteringPresent) canvas.classList.add('no-anim');
 
-    slide.elements.forEach((el, idx) => {
+  slide.elements.forEach((el, idx) => {
     const lvl = el.level !== undefined ? parseInt(el.level) : 1;
     if (hiddenLevels.some(h => parseInt(h) === lvl)) return;
 
@@ -314,9 +317,9 @@ function renderSlide() {
       w.dataset.elIdx = idx;
       w.dataset.type = el.type;
     }
-    
+
     w.className = 'slide-element-free' + (idx === selectedElIdx ? ' selected' : '');
-    
+
     const layerPriority = layerSeq.indexOf(lvl);
     let isAbove = true;
     let animZ = 50 + (layerPriority === -1 ? 0 : layerPriority);
@@ -329,7 +332,7 @@ function renderSlide() {
         const timingStr = (slide.layerTiming && slide.layerTiming[lvl]) || '0-';
         const range = parseTiming(timingStr);
         isAbove = (presentStep >= range.start && presentStep <= range.end);
-        
+
         if (!isAbove) {
           let anim = 'fade';
           const isEntryPhase = presentStep < range.start;
@@ -343,8 +346,8 @@ function renderSlide() {
           }
           const offset = 600;
           // Invert the off-screen start position for entry so it slides TOWARDS the specified direction
-          const dirMod = isEntryPhase ? -1 : 1; 
-          
+          const dirMod = isEntryPhase ? -1 : 1;
+
           if (anim === 'slideL') transform = `translateX(${dirMod * -offset}px)`;
           else if (anim === 'slideR') transform = `translateX(${dirMod * offset}px)`;
           else if (anim === 'slideU') transform = `translateY(${dirMod * -offset}px)`;
@@ -358,8 +361,8 @@ function renderSlide() {
     if (isPresenting && el.type === 'jupyter-output' && el.outputVisible) animZ += 10;
     const outputEditorZ = el.type === 'jupyter-output' ? (el.outputVisible ? 15 : -5) : 0;
     const z = isPresenting ? animZ : ((50 + (layerPriority === -1 ? 0 : layerPriority) * 20) +
-              (parseInt(selectedLayer) === lvl ? 200 : 0) +
-              (idx === selectedElIdx ? 500 : 0) + outputEditorZ);
+      (parseInt(selectedLayer) === lvl ? 200 : 0) +
+      (idx === selectedElIdx ? 500 : 0) + outputEditorZ);
 
     // Update wrapper position and basic layer styles
     w.style.left = `${el.x || 0}px`;
@@ -399,14 +402,13 @@ function renderSlide() {
     } else {
       w.style.opacity = 1;
       w.style.transform = '';
-      // jupyter-output: block pointer events when behind input, allow when in foreground
-      if (el.type === 'jupyter-output') {
-        w.style.pointerEvents = el.outputVisible ? 'auto' : 'none';
-      } else {
-        w.style.pointerEvents = 'auto';
-      }
+      // jupyter-output wrapper is always pointer-events:none in editor mode so it
+      // never blocks the input's drag/resize handles. The Clear button inside sets
+      // its own pointer-events:auto so it stays clickable when in the foreground.
+      w.style.pointerEvents = el.type === 'jupyter-output' ? 'none' : 'auto';
       w.style.transition = '';
-      w.style.visibility = 'visible';
+      // Hide output cell in editor when behind input; only show when in foreground (outputVisible)
+      w.style.visibility = (el.type === 'jupyter-output' && !el.outputVisible) ? 'hidden' : 'visible';
     }
 
     if (isPresenting && el.type === 'jupyter') {
@@ -474,24 +476,31 @@ function renderSlide() {
 
 function renderTextEl(w, el, idx, isLight) {
   const box = document.createElement('div'); box.className = 'text-element-box';
-  if (el.borderColor && el.borderWidth) box.style.border = `${el.borderWidth}px solid ${el.borderColor}`;
-  if (el.bgColor) box.style.background = el.bgColor;
-  box.style.borderRadius = 'var(--radius-sm)';
 
   const c = document.createElement('div');
   c.className = `text-element-content ${el.type}-el`;
   c.contentEditable = true; c.innerHTML = el.content;
+  if (el.fontSize) c.style.fontSize = el.fontSize + 'px';
   if (isLight && !el.bgColor) c.style.color = '#1a1a2e';
   c.addEventListener('focus', () => { selectEl(idx); });
   c.addEventListener('input', () => { slides[currentSlideIdx].elements[idx].content = c.innerHTML; renderSidebar(); });
   c.addEventListener('mouseup', () => setTimeout(updateTbState, 10));
   c.addEventListener('keyup', () => setTimeout(updateTbState, 10));
   box.appendChild(c); w.appendChild(box);
+  applyBoxStyle(idx);
 
   if (idx === selectedElIdx) {
     const tb = mkTextToolbar(idx); w.appendChild(tb);
     const sp = mkStylePanel(idx, el); w.appendChild(sp);
-    setTimeout(() => { tb.classList.add('visible'); sp.classList.add('visible'); }, 20);
+    // Style panel shows immediately on selection; toolbar only while text is focused
+    setTimeout(() => sp.classList.add('visible'), 20);
+    c.addEventListener('focus', () => tb.classList.add('visible'));
+    c.addEventListener('blur', (e) => {
+      // Keep toolbar open when clicking toolbar buttons (they use onmousedown + preventDefault)
+      if (!e.relatedTarget || !e.relatedTarget.closest('.text-toolbar')) {
+        tb.classList.remove('visible');
+      }
+    });
   }
 }
 
@@ -512,12 +521,7 @@ function getMediaType(dataUrl) {
 function renderImageEl(w, el, idx) {
   const d = document.createElement('div');
   d.className = 'image-element' + (el.src ? ' has-image' : '');
-  
-  // Apply initial styling
-  d.style.boxSizing = 'border-box';
-  d.style.border = (el.borderColor && el.borderWidth) ? `${el.borderWidth}px solid ${el.borderColor}` : 'none';
-  d.style.background = el.bgColor || 'transparent';
-  
+
   if (el.src) {
     const type = getMediaType(el.src);
     if (type === 'video') {
@@ -533,7 +537,7 @@ function renderImageEl(w, el, idx) {
       d.appendChild(v);
     } else if (type === 'html') {
       const f = document.createElement('iframe');
-      
+
       // Inject a margin reset and overflow hidden to prevent internal scrollbars
       let htmlSrc = ensureUtf8(el.src);
       const resetStyle = '<style>body{margin:0;padding:0;overflow:hidden;}::-webkit-scrollbar{display:none;}</style>';
@@ -544,17 +548,17 @@ function renderImageEl(w, el, idx) {
       } else {
         htmlSrc = htmlSrc.replace('data:text/html;charset=utf-8,', 'data:text/html;charset=utf-8,' + resetStyle);
       }
-      
+
       f.src = htmlSrc;
       f.scrolling = "no";
       f.style.border = 'none';
       f.sandbox = "allow-scripts allow-popups allow-forms allow-same-origin";
-      
+
       // Calculate scale based on box size vs. natural size
       const naturalW = el.naturalW || 960;
       const naturalH = el.naturalH || 540;
       const scale = el.w / naturalW;
-      
+
       f.style.width = naturalW + 'px';
       f.style.height = naturalH + 'px';
       f.style.transform = `scale(${scale})`;
@@ -562,9 +566,9 @@ function renderImageEl(w, el, idx) {
       f.style.position = 'absolute';
       f.style.top = '0';
       f.style.left = '0';
-      
+
       d.appendChild(f);
-      d.style.position = 'relative'; 
+      d.style.position = 'relative';
       d.style.overflow = 'hidden';
     } else {
       const img = document.createElement('img');
@@ -575,6 +579,7 @@ function renderImageEl(w, el, idx) {
   }
 
   w.appendChild(d);
+  applyBoxStyle(idx);
 
   if (idx === selectedElIdx) {
     const sp = mkStylePanel(idx, el); w.appendChild(sp);
@@ -582,7 +587,7 @@ function renderImageEl(w, el, idx) {
   }
 
   d.onclick = () => {
-    if (el.src) return; 
+    if (el.src) return;
     openMediaPicker(idx);
   };
 }
@@ -600,16 +605,16 @@ function renderPickerGrid(filter) {
   const container = document.getElementById('pickerGrid');
   if (!container) return;
   container.innerHTML = '';
-  
+
   const files = Object.values(uploadedFiles).filter(f => {
     if (!f) return false;
     const name = f.name.toLowerCase();
-    if (name.endsWith('.py')) return false; 
-    
+    if (name.endsWith('.py')) return false;
+
     const isImg = /\.(png|jpe?g|gif|webp|bmp|ico)$/i.test(name);
     const isVid = /\.(mp4|webm|ogg)$/i.test(name);
     const isHtml = name.endsWith('.html');
-    
+
     if (filter === 'image') return isImg;
     if (filter === 'video') return isVid;
     if (filter === 'html') return isHtml;
@@ -625,7 +630,7 @@ function renderPickerGrid(filter) {
     const isImg = /\.(png|jpe?g|gif|webp|bmp|ico)$/i.test(f.name);
     const isVid = /\.(mp4|webm|ogg)$/i.test(f.name);
     const icon = isImg ? '🖼️' : (isVid ? '🎬' : '🌐');
-    
+
     const item = document.createElement('div');
     item.className = 'picker-item';
     item.onclick = () => selectPickerAsset(f.name);
@@ -642,7 +647,7 @@ async function selectPickerAsset(name) {
   if (!f) return;
   const el = slides[currentSlideIdx].elements[activePickerElIdx];
   el.src = f.data;
-  
+
   // Auto-fit dimensions
   try {
     const dim = await getMediaDimensions(f.data);
@@ -650,15 +655,15 @@ async function selectPickerAsset(name) {
     let targetW = dim.w;
     let targetH = dim.h;
     const maxW = 880, maxH = 460;
-    
+
     if (targetW > maxW) { targetW = maxW; targetH = targetW / aspect; }
     if (targetH > maxH) { targetH = maxH; targetW = targetH * aspect; }
-    
-    el.w = Math.round(targetW); 
+
+    el.w = Math.round(targetW);
     el.h = Math.round(targetH);
     el.naturalW = dim.w;
     el.naturalH = dim.h;
-  } catch(e) { console.error("Dim fetch failed", e); }
+  } catch (e) { console.error("Dim fetch failed", e); }
 
   const nameL = name.toLowerCase();
   if (nameL.endsWith('.mp4') || nameL.endsWith('.webm') || nameL.endsWith('.ogg')) {
@@ -694,10 +699,10 @@ function getMediaDimensions(src) {
           const cont = m.getAttribute('content') || '';
 
           if (name === 'viewport' || name === 'dimensions' || name === 'viewport-width' || name === 'viewport-height') {
-             const mw = cont.match(/width=(\d+)/) || (name.includes('width') ? [0, cont] : null);
-             const mh = cont.match(/height=(\d+)/) || (name.includes('height') ? [0, cont] : null);
-             if (mw && !w) w = parseInt(mw[1]);
-             if (mh && !h) h = parseInt(mh[1]);
+            const mw = cont.match(/width=(\d+)/) || (name.includes('width') ? [0, cont] : null);
+            const mh = cont.match(/height=(\d+)/) || (name.includes('height') ? [0, cont] : null);
+            if (mw && !w) w = parseInt(mw[1]);
+            if (mh && !h) h = parseInt(mh[1]);
           }
           // 3. OpenGraph Tags
           if (prop === 'og:image:width' && !w) w = parseInt(cont);
@@ -718,11 +723,11 @@ function getMediaDimensions(src) {
             const data = JSON.parse(jsonLd.textContent);
             if (data.width && !w) w = parseInt(data.width);
             if (data.height && !h) h = parseInt(data.height);
-          } catch(e) {}
+          } catch (e) { }
         }
-        
+
         resolve({ w: w || 960, h: h || 540 });
-      } catch(e) {
+      } catch (e) {
         resolve({ w: 960, h: 540 });
       }
     } else {
@@ -744,7 +749,7 @@ async function uploadFromPicker() {
     const nameL = f.name.toLowerCase();
     const isHtmlFile = nameL.endsWith('.html');
     const isVideoFile = nameL.endsWith('.mp4') || nameL.endsWith('.webm') || nameL.endsWith('.ogg');
-    
+
     if (isHtmlFile) {
       if (data.startsWith('data:application/octet-stream')) {
         data = data.replace('data:application/octet-stream', 'data:text/html');
@@ -755,11 +760,11 @@ async function uploadFromPicker() {
         data = data.replace('data:application/octet-stream', 'data:video/mp4');
       }
     }
-    
-    let fileObj = { 
-      name: f.name, 
-      data, 
-      type: (isHtmlFile) ? 'text' : 'binary' 
+
+    let fileObj = {
+      name: f.name,
+      data,
+      type: (isHtmlFile) ? 'text' : 'binary'
     };
     fileObj = await handleFileConflict(fileObj);
     if (fileObj) {
@@ -774,7 +779,7 @@ async function uploadFromPicker() {
 
 function renderJupyterEl(w, el, idx) {
   const cmId = `cm_${currentSlideIdx}_${idx}`;
-  const cell = document.createElement('div'); cell.className = 'jupyter-cell cm6-bundled';
+  const cell = document.createElement('div'); cell.className = `jupyter-cell cm6-bundled${el.cmTheme === 'light' ? ' cm-light' : ''}`;
   const ratio = el.codeRatio || 0.6;
   const outputSuppressed = ratio >= 0.98;
 
@@ -807,7 +812,7 @@ function renderJupyterEl(w, el, idx) {
           <span class="cell-code-label"><span class="py-dot"></span>Python</span>
           <div class="cell-controls">
             <button class="run-btn" id="runBtn_${idx}" onclick="event.stopPropagation();runCell(${idx})">▶ Run</button>
-            <button class="cell-action-btn" onclick="event.stopPropagation();separateCell(${idx})" title="Separate Input/Output">◩ Separate</button>
+            <button class="cell-action-btn" onclick="event.stopPropagation();separateCell(${idx})" title="Split Input/Output">◩ Split</button>
           </div>
         </div>
         <div class="cell-code-editor" id="editor_${cmId}"></div>
@@ -825,10 +830,16 @@ function renderJupyterEl(w, el, idx) {
     `;
   }
   w.appendChild(cell);
+  applyBoxStyle(idx);
 
   if (!document.body.classList.contains('presenting')) {
     const divider = cell.querySelector('.cell-divider');
     if (divider) divider.addEventListener('mousedown', (e) => { e.stopPropagation(); startCellRatioResize(e, idx); });
+  }
+
+  if (idx === selectedElIdx && !document.body.classList.contains('presenting')) {
+    const sp = mkStylePanel(idx, el); w.appendChild(sp);
+    setTimeout(() => sp.classList.add('visible'), 20);
   }
 
   requestAnimationFrame(() => {
@@ -840,7 +851,7 @@ function renderJupyterEl(w, el, idx) {
 
 function renderJupyterInputEl(w, el, idx) {
   const cmId = `cm_${currentSlideIdx}_${idx}`;
-  const cell = document.createElement('div'); cell.className = 'jupyter-cell jupyter-sep-input';
+  const cell = document.createElement('div'); cell.className = `jupyter-cell jupyter-sep-input${el.cmTheme === 'light' ? ' cm-light' : ''}`;
   cell.innerHTML = `
     <div class="cell-code-side" style="flex:1">
       <div class="cell-code-header">
@@ -854,6 +865,13 @@ function renderJupyterInputEl(w, el, idx) {
     </div>
   `;
   w.appendChild(cell);
+  applyBoxStyle(idx);
+
+  if (idx === selectedElIdx && !document.body.classList.contains('presenting')) {
+    const sp = mkStylePanel(idx, el); w.appendChild(sp);
+    setTimeout(() => sp.classList.add('visible'), 20);
+  }
+
   requestAnimationFrame(() => {
     const ee = document.getElementById(`editor_${cmId}`);
     if (ee) initCM6(ee, el, cmId);
@@ -867,7 +885,7 @@ function renderJupyterOutputEl(w, el, idx) {
       <div class="cell-output-header">
         <span class="cell-output-label">⬡ Output</span>
         <div class="cell-controls">
-          <button class="clear-output-btn" onclick="event.stopPropagation();clearOutput(${idx})" title="Clear Output">✕</button>
+          <button class="clear-output-btn" onclick="event.stopPropagation();clearOutput(${idx})" title="Clear Output" style="pointer-events:auto">✕</button>
         </div>
       </div>
       <div class="cell-output-content" id="output_${idx}">
@@ -876,6 +894,7 @@ function renderJupyterOutputEl(w, el, idx) {
     </div>
   `;
   w.appendChild(cell);
+  applyBoxStyle(idx);
 }
 
 function separateCell(i) {
@@ -919,7 +938,7 @@ function mergeCell(i) {
     const p = els[partnerIdx];
     const input = el.type === 'jupyter-input' ? el : p;
     const output = el.type === 'jupyter-output' ? el : p;
-    
+
     const newEl = {
       ...input,
       type: 'jupyter',
@@ -936,7 +955,7 @@ function mergeCell(i) {
       els.splice(partnerIdx, 1, newEl);
     }
   }
-  
+
   selectedElIdx = -1;
   renderSlide();
 }
@@ -945,18 +964,18 @@ function startCellRatioResize(e, idx) {
   const el = slides[currentSlideIdx].elements[idx];
   const wrapper = document.querySelector(`[data-el-idx="${idx}"]`);
   if (!wrapper) return;
-  
+
   const startX = e.clientX;
   const startRatio = el.codeRatio || 0.6;
   const rect = wrapper.getBoundingClientRect();
   const width = rect.width;
-  
+
   document.body.classList.add('resizing-ratio');
-  
+
   const onMove = (ev) => {
     const deltaX = (ev.clientX - startX) / workspaceZoom;
     let newRatio = startRatio + (deltaX / (width / workspaceZoom));
-    
+
     // Snapping points — including 1.0 to fully suppress output
     const snaps = [0.25, 0.4, 0.5, 0.6, 0.75, 1.0];
     for (const snap of snaps) {
@@ -978,25 +997,25 @@ function startCellRatioResize(e, idx) {
     const divider = wrapper.querySelector('.cell-divider');
     if (outputSuppressed) {
       if (codeSide) { codeSide.style.flex = '1'; }
-      if (outSide)  { outSide.style.flex = '0'; outSide.style.minWidth = '0'; outSide.style.width = '0'; outSide.style.overflow = 'hidden'; }
+      if (outSide) { outSide.style.flex = '0'; outSide.style.minWidth = '0'; outSide.style.width = '0'; outSide.style.overflow = 'hidden'; }
       // Keep divider visible so user can drag it back
     } else {
       if (codeSide) { codeSide.style.flex = String(newRatio); }
-      if (outSide)  { outSide.style.flex = String(1 - newRatio); outSide.style.width = ''; outSide.style.minWidth = ''; outSide.style.overflow = ''; }
-      if (divider)  { divider.style.display = ''; }
+      if (outSide) { outSide.style.flex = String(1 - newRatio); outSide.style.width = ''; outSide.style.minWidth = ''; outSide.style.overflow = ''; }
+      if (divider) { divider.style.display = ''; }
     }
 
     // Refresh CodeMirror to fit new width
     const cmId = `cm_${currentSlideIdx}_${idx}`;
     // CM6 automatically handles layout changes
   };
-  
+
   const onUp = () => {
     document.removeEventListener('mousemove', onMove);
     document.removeEventListener('mouseup', onUp);
     document.body.classList.remove('resizing-ratio');
     renderSlide(); // Re-render to show/hide buttons after suppression change
-    saveCurrentPresentation();
+    saveUndo();
   };
 
   document.addEventListener('mousemove', onMove);
@@ -1015,6 +1034,13 @@ function clearLinkedOutput(inputIdx) {
 // ═══════ STYLE PANEL ═══════
 function mkStylePanel(idx, el) {
   const p = document.createElement('div'); p.className = 'style-panel'; p.id = `sp_${idx}`;
+  const isJupyter = el.type === 'jupyter' || el.type === 'jupyter-input';
+  const layerIndicator = (() => {
+    const slide = slides[currentSlideIdx];
+    const layers = slide.layers || [0, 1];
+    const lIdx = layers.indexOf(el.level !== undefined ? el.level : 1);
+    return lIdx === 0 ? 'BG' : 'L' + lIdx;
+  })();
   p.innerHTML = `
     <span class="sp-label">Border</span>
     <button class="palette-trigger-btn" style="background:${el.borderColor || '#7c6cf0'}" onclick="openColorPalette(this, '${el.borderColor || '#7c6cf0'}', (hex)=> { this.style.background=hex; setBorderColor(${idx}, hex); })"></button>
@@ -1025,23 +1051,35 @@ function mkStylePanel(idx, el) {
       <option value="3" ${el.borderWidth === 3 ? 'selected' : ''}>3</option>
       <option value="4" ${el.borderWidth === 4 ? 'selected' : ''}>4</option>
     </select>
+    <button class="layer-btn" onclick="toggleCorners(${idx})" title="Toggle Rounded/Sharp Corners">${el.sharpCorners ? '⬛' : '⚪'}</button>
     <div class="tt-sep"></div>
-    <span class="sp-label">Fill</span>
-    <button class="palette-trigger-btn" style="background:${rgbaToHex(el.bgColor) || '#22222e'}" onclick="openColorPalette(this, '${rgbaToHex(el.bgColor) || '#22222e'}', (hex)=> { this.style.background=hex; setBgColor(${idx}, hex); })"></button>
-    <select class="sp-select" onchange="setBgAlpha(${idx},this.value)">
-      <option value="0" ${(el._bgAlpha || 0) === 0 ? 'selected' : ''}>0%</option>
-      <option value="0.08" ${el._bgAlpha === 0.08 ? 'selected' : ''}>8%</option>
-      <option value="0.15" ${el._bgAlpha === 0.15 ? 'selected' : ''}>15%</option>
-      <option value="0.25" ${el._bgAlpha === 0.25 ? 'selected' : ''}>25%</option>
-      <option value="0.4" ${el._bgAlpha === 0.4 ? 'selected' : ''}>40%</option>
-      <option value="0.6" ${el._bgAlpha === 0.6 ? 'selected' : ''}>60%</option>
-      <option value="0.85" ${el._bgAlpha === 0.85 ? 'selected' : ''}>85%</option>
-    </select>
-    <div class="tt-sep"></div>
+    ${!isJupyter ? `
+      <span class="sp-label">Fill</span>
+      <button class="palette-trigger-btn" style="background:${rgbaToHex(el.bgColor) || '#22222e'}" onclick="openColorPalette(this, '${rgbaToHex(el.bgColor) || '#22222e'}', (hex)=> { this.style.background=hex; setBgColor(${idx}, hex); })"></button>
+      <select class="sp-select" onchange="setBgAlpha(${idx},this.value)">
+        <option value="0" ${(el._bgAlpha || 0) === 0 ? 'selected' : ''}>0%</option>
+        <option value="0.08" ${el._bgAlpha === 0.08 ? 'selected' : ''}>8%</option>
+        <option value="0.15" ${el._bgAlpha === 0.15 ? 'selected' : ''}>15%</option>
+        <option value="0.25" ${el._bgAlpha === 0.25 ? 'selected' : ''}>25%</option>
+        <option value="0.4" ${el._bgAlpha === 0.4 ? 'selected' : ''}>40%</option>
+        <option value="0.6" ${el._bgAlpha === 0.6 ? 'selected' : ''}>60%</option>
+        <option value="0.85" ${el._bgAlpha === 0.85 ? 'selected' : ''}>85%</option>
+        <option value="1" ${el._bgAlpha === 1 ? 'selected' : ''}>100%</option>
+      </select>
+      <div class="tt-sep"></div>
+    ` : ''}
+    ${isJupyter ? `
+      <span class="sp-label">Theme</span>
+      <select class="sp-select" onchange="setCMTheme(${idx}, this.value)">
+        <option value="dark" ${(el.cmTheme || 'dark') !== 'light' ? 'selected' : ''}>Dark</option>
+        <option value="light" ${el.cmTheme === 'light' ? 'selected' : ''}>Light</option>
+      </select>
+      <div class="tt-sep"></div>
+    ` : ''}
     <span class="sp-label">Layer</span>
     <button class="layer-btn" onclick="changeLevel(${idx}, -1)" ${el.level === 0 ? 'disabled' : ''} title="Move Down">▼</button>
     <button class="layer-btn" onclick="changeLevel(${idx}, 1)" title="Move Up">▲</button>
-    <span class="sp-layer-indicator">${(el.level !== undefined ? el.level : 1) === 0 ? 'BG' : 'L' + (el.level !== undefined ? el.level : 1)}</span>
+    <span class="sp-layer-indicator">${layerIndicator}</span>
   `;
 
   const mType = el.src ? getMediaType(el.src) : '';
@@ -1092,7 +1130,7 @@ async function changeLevel(idx, dir) {
   const slide = slides[currentSlideIdx];
   const el = slide.elements[idx];
   if (!slide.layers) slide.layers = [0, 1];
-  
+
   let curLvl = el.level !== undefined ? el.level : 1;
   const layers = slide.layers;
   const curIdx = layers.indexOf(curLvl);
@@ -1116,7 +1154,7 @@ async function changeLevel(idx, dir) {
     } else {
       el.level = layers[targetIdx];
     }
-  } 
+  }
   // Move UP
   else {
     if (targetIdx >= layers.length) {
@@ -1146,10 +1184,10 @@ function renderLayerList() {
   const list = document.getElementById('layerList');
   if (!list) return;
   list.innerHTML = '';
-  
+
   const layers = slide.layers || [0, 1];
   const hidden = slide.hiddenLayers || [];
-  
+
   layers.forEach((lvl, i) => {
     const item = document.createElement('div');
     const isActive = parseInt(selectedLayer) === lvl;
@@ -1158,8 +1196,8 @@ function renderLayerList() {
       if (e.target.closest('.layer-controls')) return;
       selectLayer(lvl);
     };
-    
-    const name = lvl === 0 ? 'Background' : `L${lvl}`;
+
+    const name = lvl === 0 ? 'Background' : `L${i}`;
     const isChecked = !hidden.some(h => parseInt(h) === lvl);
     const isBg = lvl === 0;
     const upDisabled = i <= 1;
@@ -1208,7 +1246,7 @@ function updateLayerAnim(lvl, phase) {
   const slide = slides[currentSlideIdx];
   if (!slide.layerAnim) slide.layerAnim = {};
   if (!slide.layerAnim[lvl]) slide.layerAnim[lvl] = { entry: 'fade', exit: 'fade' };
-  
+
   // Migration for legacy data
   if (typeof slide.layerAnim[lvl] === 'string') {
     const prev = slide.layerAnim[lvl];
@@ -1262,11 +1300,11 @@ async function deleteLayer(lvl) {
   if (lvl === 0) return; // Cannot delete background
   const slide = slides[currentSlideIdx];
   const hasContent = slide.elements.some(el => (el.level !== undefined ? el.level : 1) === lvl);
-  
+
   if (hasContent) {
     if (!await showConfirm("Delete Layer", `Warning: This layer contains elements. Deleting the layer will also delete all content on it. Proceed?`, "Delete All")) return;
   }
-  
+
   saveUndo();
   // Remove elements on this layer
   slide.elements = slide.elements.filter(el => (el.level !== undefined ? el.level : 1) !== lvl);
@@ -1274,7 +1312,7 @@ async function deleteLayer(lvl) {
   slide.layers = slide.layers.filter(l => l !== lvl);
   // Remove from hidden layers
   if (slide.hiddenLayers) slide.hiddenLayers = slide.hiddenLayers.filter(l => l !== lvl);
-  
+
   renderSlide();
   renderLayerList();
 }
@@ -1298,7 +1336,7 @@ function toggleLayerVisibility(lvl) {
   if (!slide.hiddenLayers) slide.hiddenLayers = [];
   const lvlNum = parseInt(lvl);
   const layers = slide.layers || [0, 1];
-  
+
   if (slide.hiddenLayers.some(h => parseInt(h) === lvlNum)) {
     // Unhiding
     slide.hiddenLayers = slide.hiddenLayers.filter(h => parseInt(h) !== lvlNum);
@@ -1324,7 +1362,7 @@ function toggleLayerVisibility(lvl) {
       }
       selectedLayer = next;
     }
-    
+
     // Deselect if active element is on this layer
     if (selectedElIdx !== -1) {
       const selEl = slide.elements[selectedElIdx];
@@ -1345,8 +1383,8 @@ function moveLayer(lvl, dir) {
   const layers = slide.layers;
   const idx = layers.indexOf(lvl);
   const nextIdx = idx + dir;
-  if (nextIdx < 1 || nextIdx >= layers.length) return; 
-  
+  if (nextIdx < 1 || nextIdx >= layers.length) return;
+
   [layers[idx], layers[nextIdx]] = [layers[nextIdx], layers[idx]];
   renderSlide();
   renderLayerList();
@@ -1374,19 +1412,37 @@ function setBorderColor(i, c) { const el = slides[currentSlideIdx].elements[i]; 
 function setBorderWidth(i, v) { const el = slides[currentSlideIdx].elements[i]; el.borderWidth = parseInt(v); if (!parseInt(v)) el.borderColor = ''; applyBoxStyle(i); }
 function setBgColor(i, hex) { const el = slides[currentSlideIdx].elements[i]; el._bgHex = hex; const a = el._bgAlpha || 0.15; if (!el._bgAlpha) el._bgAlpha = 0.15; el.bgColor = hexToRgba(hex, el._bgAlpha); applyBoxStyle(i); }
 function setBgAlpha(i, a) { const el = slides[currentSlideIdx].elements[i]; el._bgAlpha = parseFloat(a); const hex = el._bgHex || '#22222e'; el.bgColor = parseFloat(a) === 0 ? '' : hexToRgba(hex, parseFloat(a)); applyBoxStyle(i); }
+function toggleCorners(i) {
+  const el = slides[currentSlideIdx].elements[i];
+  el.sharpCorners = !el.sharpCorners;
+  applyBoxStyle(i);
+  renderSlide();
+}
 function applyBoxStyle(i) {
   const el = slides[currentSlideIdx].elements[i];
-  const box = document.querySelector(`[data-el-idx="${i}"] .text-element-box, [data-el-idx="${i}"] .image-element`);
+  const box = document.querySelector(`[data-el-idx="${i}"] .text-element-box, [data-el-idx="${i}"] .image-element, [data-el-idx="${i}"] .jupyter-cell`);
   if (!box) return;
   box.style.boxSizing = 'border-box';
   box.style.border = (el.borderColor && el.borderWidth) ? `${el.borderWidth}px solid ${el.borderColor}` : 'none';
   box.style.background = el.bgColor || 'transparent';
+
+  if (el.sharpCorners) {
+    box.style.borderRadius = '0px';
+  } else {
+    // Falls back to CSS default (var(--radius) or var(--radius-sm))
+    box.style.borderRadius = '';
+  }
+
+  // Also update selection border if present
+  const sel = document.querySelector(`[data-el-idx="${i}"] .sel-border`);
+  if (sel) {
+    sel.style.borderRadius = el.sharpCorners ? '0px' : '';
+  }
 }
 
 // ═══════ COLOR PALETTE LOGIC ═══════
 let colorPaletteCb = null;
 let savedTextSelection = null;
-let customColorHistory = [];
 
 function saveTextSelection() {
   const sel = window.getSelection();
@@ -1404,13 +1460,17 @@ function addCustomColorToHistory(hex) {
   if (!hex || hex === 'transparent') return;
   hex = hex.toLowerCase();
 
+  // Robust validation
+  const hexRegex = /^#([0-9a-f]{3}){1,2}$/i;
+  if (!hexRegex.test(hex)) return;
+
   // Ignore native default swatches
   const defaults = ['#7c6cf0', '#9d8fff', '#1e3a8a', '#4ade80', '#15803d', '#f87171', '#b91c1c', '#fb923c', '#facc15', '#a16207', '#22d3ee', '#0f766e', '#c026d3', '#e8e6f0', '#16161d'];
   if (defaults.includes(hex)) return;
 
   if (!customColorHistory.includes(hex)) {
     customColorHistory.unshift(hex);
-    if (customColorHistory.length > 8) customColorHistory.pop();
+    if (customColorHistory.length > 10) customColorHistory.pop();
     renderCustomHistorySwatches();
   }
 }
@@ -1422,7 +1482,9 @@ function renderCustomHistorySwatches() {
     container.style.display = 'none';
     return;
   }
-  container.style.display = 'flex';
+  container.style.display = 'grid';
+  container.style.gridTemplateColumns = 'repeat(5, 1fr)';
+  container.style.gap = '6px';
   container.innerHTML = '';
   customColorHistory.forEach(hex => {
     const d = document.createElement('div');
@@ -1470,12 +1532,26 @@ function closeColorPalette() {
 }
 
 function applyPaletteHex() {
-  let hex = document.getElementById('paletteHexInput').value;
-  if (!hex.startsWith('#') && hex !== 'transparent') hex = '#' + hex;
-  if (hex.length === 4) hex = '#' + hex[1] + hex[1] + hex[2] + hex[2] + hex[3] + hex[3];
+  let v = document.getElementById('paletteHexInput').value.trim();
+  if (v === 'transparent') {
+    if (colorPaletteCb) colorPaletteCb('transparent');
+    closeColorPalette();
+    return;
+  }
 
-  // Set native picker so its advanced UI shows the Hex internally
-  if (hex !== 'transparent') document.getElementById('paletteNativeInput').value = hex.slice(0, 7);
+  // Cleanup
+  let hex = v.replace(/^#+/, '');
+  if (hex.length === 3) hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+  hex = '#' + hex;
+
+  const hexRegex = /^#([0-9a-f]{6})$/i;
+  if (!hexRegex.test(hex)) {
+    toast('Invalid Hex Format');
+    return;
+  }
+
+  // Set native picker
+  document.getElementById('paletteNativeInput').value = hex;
 
   addCustomColorToHistory(hex);
   restoreTextSelection();
@@ -1498,11 +1574,10 @@ function applyPaletteColor(hex) {
 function showCtxMenu(e, i) { ctxSlideIdx = i; const m = document.getElementById('ctxMenu'); m.style.top = e.clientY + 'px'; m.style.left = e.clientX + 'px'; m.classList.add('show'); setTimeout(() => document.addEventListener('click', hideCtx, { once: true }), 10); }
 function hideCtx() { document.getElementById('ctxMenu').classList.remove('show'); }
 function ctxAction(a) { hideCtx(); if (a === 'duplicate') duplicateSlide(ctxSlideIdx); else if (a === 'hide') toggleHidden(ctxSlideIdx); else if (a === 'delete') deleteSlide(ctxSlideIdx); else if (a === 'moveUp') moveSlide(ctxSlideIdx, -1); else if (a === 'moveDown') moveSlide(ctxSlideIdx, 1); }
-function changeBg(v) { 
-  saveUndo(); 
-  slides[currentSlideIdx].bg = v; 
+function changeBg(v) {
+  saveUndo();
+  slides[currentSlideIdx].bg = v;
   renderSlide();
-  if (typeof refreshCMThemes === 'function') refreshCMThemes();
 }
 
 // ═══════ SHARE ═══════
@@ -1518,7 +1593,7 @@ function scalePresentationSlide() {
   const scaleX = window.innerWidth / 960;
   const scaleY = window.innerHeight / 540;
   const scale = Math.min(scaleX, scaleY);
-  
+
   canvas.style.transformOrigin = 'center center';
   canvas.style.transform = `scale(${scale})`;
 
@@ -1548,22 +1623,22 @@ function scalePresentationSlide() {
 }
 window.addEventListener('resize', scalePresentationSlide);
 
-function startPresentation() { 
-  persistAll(); 
-  presentIdx = 0; 
+function startPresentation() {
+  persistAll();
+  presentIdx = 0;
   presentStep = 0;
-  while (presentIdx < slides.length && slides[presentIdx].hidden) presentIdx++; 
-  if (presentIdx >= slides.length) { toast('No visible slides!'); return; } 
-  document.body.classList.add('presenting'); 
-  currentSlideIdx = presentIdx; 
-  selectedElIdx = -1; 
-  renderSlide(); 
-  scalePresentationSlide(); 
+  while (presentIdx < slides.length && slides[presentIdx].hidden) presentIdx++;
+  if (presentIdx >= slides.length) { toast('No visible slides!'); return; }
+  document.body.classList.add('presenting');
+  currentSlideIdx = presentIdx;
+  selectedElIdx = -1;
+  renderSlide();
+  scalePresentationSlide();
   updatePC();
-  document.addEventListener('keydown', pkh); 
+  document.addEventListener('keydown', pkh);
   document.addEventListener('contextmenu', blockContextMenu);
   document.addEventListener('click', handlePresentClick);
-  
+
   const trigger = document.getElementById('presentTrigger');
   if (trigger) trigger.addEventListener('click', togglePresentNav);
 }
@@ -1604,7 +1679,7 @@ function getMaxSteps(slide) {
   return max;
 }
 
-function presentNext() { 
+function presentNext() {
   const slide = slides[presentIdx];
   const max = getMaxSteps(slide);
   if (presentStep < max) {
@@ -1612,32 +1687,32 @@ function presentNext() {
     renderSlide();
     return;
   }
-  
-  let n = presentIdx + 1; 
-  while (n < slides.length && slides[n].hidden) n++; 
-  if (n >= slides.length) return; 
-  presentIdx = n; 
-  currentSlideIdx = presentIdx; 
+
+  let n = presentIdx + 1;
+  while (n < slides.length && slides[n].hidden) n++;
+  if (n >= slides.length) return;
+  presentIdx = n;
+  currentSlideIdx = presentIdx;
   presentStep = 0;
-  renderSlide(); 
-  scalePresentationSlide(); 
+  renderSlide();
+  scalePresentationSlide();
 }
 
-function presentPrev() { 
+function presentPrev() {
   if (presentStep > 0) {
     presentStep--;
     renderSlide();
     return;
   }
-  
-  let p = presentIdx - 1; 
-  while (p >= 0 && slides[p].hidden) p--; 
-  if (p < 0) return; 
-  presentIdx = p; 
-  currentSlideIdx = presentIdx; 
+
+  let p = presentIdx - 1;
+  while (p >= 0 && slides[p].hidden) p--;
+  if (p < 0) return;
+  presentIdx = p;
+  currentSlideIdx = presentIdx;
   presentStep = getMaxSteps(slides[presentIdx]);
-  renderSlide(); 
-  scalePresentationSlide(); 
+  renderSlide();
+  scalePresentationSlide();
 }
 
 function pkh(e) {
@@ -1663,23 +1738,23 @@ function stopPresentation() {
     canvas.style.transform = `scale(${workspaceZoom})`;
     canvas.style.transformOrigin = '';
   }
-  
+
   updateWorkspaceBounds();
-  renderSlide(); 
+  renderSlide();
   centerSlide();
 }
 
-function updatePC() { 
-  const v = slides.filter(s => !s.hidden); 
+function updatePC() {
+  const v = slides.filter(s => !s.hidden);
   const currentSlide = slides[presentIdx];
   const sIdx = v.indexOf(currentSlide) + 1;
   const max = getMaxSteps(currentSlide);
   const stepInfo = max > 0 ? ` [Step ${presentStep}/${max}]` : '';
-  
+
   const text = `${sIdx} / ${v.length}${stepInfo}`;
   const counterEl = document.getElementById('presentCounter');
   if (counterEl) counterEl.textContent = text;
-  
+
   const indicatorEl = document.getElementById('presentIndicator');
   if (indicatorEl) indicatorEl.textContent = text;
 }
@@ -1689,29 +1764,30 @@ async function exportJSON() {
   persistAll();
   const zip = new JSZip();
   const name = document.getElementById('presTitle').value || 'Untitled';
-  
+
   const metadata = {
     title: name,
     slides,
     packages: activePackageConfig ? activePackageConfig.packages : DEFAULT_PACKAGES,
-    uploadedFiles: {} 
+    uploadedFiles: {},
+    customColorHistory: customColorHistory
   };
-  
+
   const assetsFolder = zip.folder("assets");
-  
+
   for (const fileName in uploadedFiles) {
     const f = uploadedFiles[fileName];
     metadata.uploadedFiles[fileName] = { name: f.name, type: f.type };
     if (f.data && f.data.startsWith('data:')) {
-       const parts = f.data.split(',');
-       const b64 = parts[1];
-       assetsFolder.file(fileName, b64, {base64: true});
+      const parts = f.data.split(',');
+      const b64 = parts[1];
+      assetsFolder.file(fileName, b64, { base64: true });
     }
   }
-  
+
   zip.file("slides.json", JSON.stringify(metadata, null, 2));
-  
-  const blob = await zip.generateAsync({type:"blob"});
+
+  const blob = await zip.generateAsync({ type: "blob" });
   const u = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = u;
@@ -1724,14 +1800,14 @@ function triggerLoad() { document.getElementById('loadInput').click(); }
 async function importJSON(e) {
   const f = e.target.files[0]; if (!f) return;
   const fName = f.name.toLowerCase();
-  
+
   try {
     let d;
     if (fName.endsWith('.zip')) {
       const zip = await JSZip.loadAsync(f);
       const slidesData = await zip.file("slides.json").async("string");
       d = JSON.parse(slidesData);
-      
+
       const files = d.uploadedFiles || {};
       for (const name in files) {
         const assetFile = zip.file(`assets/${name}`);
@@ -1743,7 +1819,7 @@ async function importJSON(e) {
           if (ext === 'mp4' || ext === 'webm') mime = `video/${ext}`;
           else if (ext === 'html') mime = 'text/html';
           else if (ext === 'jpg' || ext === 'jpeg') mime = 'image/jpeg';
-          
+
           files[name].data = `data:${mime};base64,${b64}`;
           if (mime === 'text/html') files[name].data = ensureUtf8(files[name].data);
         }
@@ -1756,12 +1832,14 @@ async function importJSON(e) {
     }
 
     slides = d.slides || [];
+    customColorHistory = d.customColorHistory || [];
     document.getElementById('presTitle').value = d.title || 'Untitled';
     if (d.packages) activePackageConfig = { packages: d.packages };
     currentSlideIdx = 0; selectedElIdx = -1;
     activePresentationId = crypto.randomUUID();
     saveCurrentPresentation();
     renderSidebar(); renderSlide(); renderUploadedFiles();
+    renderCustomHistorySwatches();
     toast('Loaded!');
   } catch (err) {
     console.error(err);
@@ -1774,7 +1852,7 @@ function centerSlide() {
   const wrapper = document.getElementById('canvasWrapper');
   const workspace = document.getElementById('workspace');
   if (!wrapper || !workspace) return;
-  
+
   // Ensure we get absolute pixel values
   const rect = workspace.getBoundingClientRect();
   const wW = rect.width;
@@ -1817,28 +1895,28 @@ function resetZoom() { setZoom(1.0); centerSlide(); }
 
 // Initialization for zoom listeners
 document.addEventListener('DOMContentLoaded', () => {
-    const wrapper = document.getElementById('canvasWrapper');
-    if (wrapper) {
-        wrapper.addEventListener('wheel', (e) => {
-            if (e.ctrlKey) {
-                if (document.body.classList.contains('presenting')) return;
-                e.preventDefault();
-                // Reduced sensitivity by scaling the delta
-                const delta = -e.deltaY * 0.001; 
-                setZoom(workspaceZoom + delta);
-                updateWorkspaceBounds();
-            }
-        }, { passive: false });
-    }
+  const wrapper = document.getElementById('canvasWrapper');
+  if (wrapper) {
+    wrapper.addEventListener('wheel', (e) => {
+      if (e.ctrlKey) {
+        if (document.body.classList.contains('presenting')) return;
+        e.preventDefault();
+        // Reduced sensitivity by scaling the delta
+        const delta = -e.deltaY * 0.001;
+        setZoom(workspaceZoom + delta);
+        updateWorkspaceBounds();
+      }
+    }, { passive: false });
+  }
 });
 
 function updateWorkspaceBounds() {
   const slide = (slides && slides[currentSlideIdx]) ? slides[currentSlideIdx] : null;
   if (!slide || document.body.classList.contains('presenting')) return;
-  
+
   // Slide standard bounds
   let minX = 0, maxX = 960, minY = 0, maxY = 540;
-  
+
   // Account for all elements
   if (slide.elements) {
     slide.elements.forEach(el => {
@@ -1848,17 +1926,17 @@ function updateWorkspaceBounds() {
       maxY = Math.max(maxY, (el.y || 0) + (el.h || 0));
     });
   }
-  
+
   const ws = document.getElementById('workspace');
   if (ws) {
     // Safety buffer - reduced for a tighter, more professional feel
     const margin = 40;
-    
+
     // Scale the layout container size along with the zoom
     // This prevents runaway scrollbars when zooming out
     const contentW = ((maxX - minX) + margin * 2) * workspaceZoom;
     const contentH = ((maxY - minY) + margin * 2) * workspaceZoom;
-    
+
     ws.style.minWidth = contentW + 'px';
     ws.style.minHeight = contentH + 'px';
   }

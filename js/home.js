@@ -128,6 +128,8 @@ async function loadPresentation(idx) {
 
   document.getElementById('presTitle').value = meta.name || 'Untitled';
   currentSlideIdx = 0; selectedElIdx = -1;
+  customColorHistory = payload.customColorHistory || [];
+  if (typeof renderCustomHistorySwatches === 'function') renderCustomHistorySwatches();
   lastSavedSnapshot = JSON.stringify({ slides, title: meta.name || 'Untitled' });
   document.getElementById('homeScreen').classList.add('hidden');
   setTimeout(() => document.getElementById('homeScreen').style.display = 'none', 600);
@@ -161,7 +163,8 @@ async function saveCurrentPresentation() {
     const payload = {
       slides: JSON.parse(JSON.stringify(slides)),
       uploadedFiles: metadataFiles,
-      packages: activePackageConfig ? activePackageConfig.packages : DEFAULT_PACKAGES
+      packages: activePackageConfig ? activePackageConfig.packages : DEFAULT_PACKAGES,
+      customColorHistory: customColorHistory
     };
 
     // 2. Save heavy payload to IDB
@@ -503,7 +506,8 @@ function wizardNext3() {
     const row = document.createElement('div');
     row.className = 'wizard-alias-row';
     const existingAlias = (activePackageConfig && activePackageConfig.packages.find(p => p.name === name))?.alias || '';
-    row.innerHTML = `<span class="wizard-alias-name" style="font-family:'JetBrains Mono'">import ${name} as</span>
+    const importName = getImportName(name);
+    row.innerHTML = `<span class="wizard-alias-name" style="font-family:'JetBrains Mono'">import ${importName} as</span>
       <input class="wizard-alias-input" data-pkg="${name}" placeholder="alias (optional)" value="${existingAlias}">`;
     list.appendChild(row);
   });
@@ -537,6 +541,8 @@ function wizardFinish() {
   // Setup new presentation
   const name = document.getElementById('wizardName').value.trim() || 'Untitled';
   slides = [];
+  customColorHistory = [];
+  if (typeof renderCustomHistorySwatches === 'function') renderCustomHistorySwatches();
   uploadedFiles = {};
   document.getElementById('presTitle').value = name;
   addSlide('title');

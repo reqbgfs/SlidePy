@@ -15,8 +15,7 @@ if (typeof CM === 'undefined') {
  * @param {String} cmId  Key for the global codeMirrors registry
  */
 function initCM6(container, el, cmId) {
-    const isLight = isLightColor(slides[currentSlideIdx].bg);
-    const theme = isLight ? CM.atomone : CM.oneDark;
+    const theme = el.cmTheme === 'light' ? CM.vscodeLight : CM.vscodeDark;
 
     const startSize = el.fontSize || 13;
 
@@ -108,16 +107,32 @@ function _cmFontDelta(view, cmId, delta) {
     toast(`Font Size: ${el.fontSize}px`);
 }
 
-/* ── Theme refresh (call when slide background changes) ────────── */
+/* ── Theme refresh ─────────────────────────────────────────────── */
 
 function refreshCMThemes() {
-    const isLight = isLightColor(slides[currentSlideIdx].bg);
-    const theme = isLight ? CM.atomone : CM.oneDark;
-
     for (const cmId in codeMirrors) {
         const view = codeMirrors[cmId];
         if (!view || !view._pyslide) continue;
+        const parts = cmId.split('_');
+        const sIdx  = parseInt(parts[1]);
+        const elIdx = parseInt(parts[2]);
+        const el = slides[sIdx] && slides[sIdx].elements[elIdx];
+        const themeExt = (el && el.cmTheme === 'light') ? CM.vscodeLight : CM.vscodeDark;
         const comp = view._pyslide.themeCompartment;
-        view.dispatch({ effects: comp.reconfigure(theme) });
+        view.dispatch({ effects: comp.reconfigure(themeExt) });
     }
+}
+
+function setCMTheme(idx, theme) {
+    const el = slides[currentSlideIdx].elements[idx];
+    if (!el) return;
+    el.cmTheme = theme;
+    const cmId = `cm_${currentSlideIdx}_${idx}`;
+    const view = codeMirrors[cmId];
+    if (view && view._pyslide) {
+        const themeExt = theme === 'light' ? CM.vscodeLight : CM.vscodeDark;
+        view.dispatch({ effects: view._pyslide.themeCompartment.reconfigure(themeExt) });
+    }
+    renderSlide();
+    saveUndo();
 }

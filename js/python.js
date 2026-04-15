@@ -105,10 +105,11 @@ if os.path.dirname(site_pkg) not in sys.path:
       await new Promise(r => setTimeout(r, 10)); // allow browser paint
       
       try {
+        const importName = getImportName(pkg.name);
         if (pkg.alias) {
-          pyodide.runPython(`import ${pkg.name} as ${pkg.alias}`);
+          pyodide.runPython(`import ${importName} as ${pkg.alias}`);
         } else {
-          pyodide.runPython(`import ${pkg.name}`);
+          pyodide.runPython(`import ${importName}`);
         }
       } catch(e) {
         console.warn(`Could not import ${pkg.name}:`, e);
@@ -209,8 +210,9 @@ if os.path.dirname(site_pkg) not in sys.path:
       await new Promise(r => setTimeout(r, 10));
       
       try {
-        if (pkg.alias) pyodide.runPython(`import ${pkg.name} as ${pkg.alias}`);
-        else pyodide.runPython(`import ${pkg.name}`);
+        const importName = getImportName(pkg.name);
+        if (pkg.alias) pyodide.runPython(`import ${importName} as ${pkg.alias}`);
+        else pyodide.runPython(`import ${importName}`);
       } catch(e) { console.warn(`Could not import ${pkg.name}:`, e); }
   }
 
@@ -289,7 +291,6 @@ async function runCell(i) {
     const inWrapper = document.querySelector(`[data-el-idx="${i}"]`);
     if (outWrapper) {
       outWrapper.style.visibility = 'visible';
-      outWrapper.style.pointerEvents = 'auto';
       if (document.body.classList.contains('presenting')) {
         outWrapper.style.zIndex = String(parseInt(outWrapper.style.zIndex || '110') + 10);
       } else {
@@ -326,8 +327,8 @@ function clearOutput(i) {
         wrapper.style.visibility = 'hidden';
         wrapper.style.pointerEvents = 'none';
       } else {
-        // Editor: send back behind input (visible but lower z-index, no pointer events)
-        wrapper.style.pointerEvents = 'none';
+        // Editor: hide and send back behind input
+        wrapper.style.visibility = 'hidden';
         const linkedInput = slides[currentSlideIdx].elements.find(
           (e, k) => k !== i && e.linkId === el.linkId && e.type === 'jupyter-input'
         );

@@ -7,7 +7,15 @@ const ELEMENT_GAP = 20;
 const MIN_JUPYTER_W = (CANVAS_W - 2 * BORDER_SNAP_MARGIN) / 2; // 440
 const MIN_JUPYTER_H = (CANVAS_H - 2 * BORDER_SNAP_MARGIN) / 2; // 230
 
-function selectEl(idx) { 
+function getTextMinH(el) {
+  // Minimum = one line at the current font size + top/bottom padding (10px each).
+  // Content below that clips via overflow:hidden — the user can always shrink to this floor.
+  const fs = el.fontSize || (el.type === 'title' ? 36 : el.type === 'subtitle' ? 20 : 16);
+  const lh = el.type === 'title' ? 1.2 : 1.5;
+  return Math.ceil(fs * lh) + 20;
+}
+
+function selectEl(idx) {
   if(selectedElIdx!==idx){ 
     if (typeof closeColorPalette === 'function') closeColorPalette();
     persistAll(); 
@@ -220,11 +228,8 @@ function startDrag(e, idx) {
   
   if(wr) wr.classList.add('dragging-el');
   if(canvas) canvas.classList.add('resizing-mode');
-  
-  const originalX = el.x;
-  const originalY = el.y;
 
-  const onMove = (ev) => { 
+  const onMove = (ev) => {
     clearGuides();
     // Base movement with CANVAS borders limits
     let targetX = Math.round((ev.clientX - rect.left) / workspaceZoom - ox);
@@ -261,10 +266,20 @@ function startDrag(e, idx) {
   const onUp = () => {
     clearGuides();
     updateWorkspaceBounds();
+    // Sync linked output element data so mergeCell and renderSlide have correct values
+    if (el.type === 'jupyter-input' && el.linkId) {
+      const outputIdx = slides[currentSlideIdx].elements.findIndex(
+        (e, j) => j !== idx && e.linkId === el.linkId && e.type === 'jupyter-output'
+      );
+      if (outputIdx !== -1) {
+        const outEl = slides[currentSlideIdx].elements[outputIdx];
+        outEl.x = el.x; outEl.y = el.y; outEl.w = el.w; outEl.h = el.h;
+      }
+    }
     if (wr) wr.classList.remove('dragging-el');
     if (canvas) canvas.classList.remove('resizing-mode');
-    document.removeEventListener('mousemove', onMove); 
-    document.removeEventListener('mouseup', onUp); 
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
   };
   
   document.addEventListener('mousemove', onMove); 
@@ -406,10 +421,7 @@ function startResize(e, idx, corner = 'se') {
       let rawW = sW + (ev.clientX - sX) / workspaceZoom;
       let rawH = sH + (ev.clientY - sY) / workspaceZoom;
       
-      let minH = 40;
-      if (el.type === 'title') minH = 64;
-      if (el.type === 'subtitle') minH = 50;
-      if (el.type === 'body') minH = 44;
+      let minH = (el.type === 'title' || el.type === 'subtitle' || el.type === 'body') ? getTextMinH(el, idx) : 40;
 
       let targetW = Math.max(el.type.startsWith('jupyter') ? MIN_JUPYTER_W / 2 : 80, rawW);
       let targetH = Math.max(el.type.startsWith('jupyter') ? MIN_JUPYTER_H / 2 : minH, rawH);
@@ -429,9 +441,6 @@ function startResize(e, idx, corner = 'se') {
           if (targetW > CANVAS_W - el.x) { targetW = CANVAS_W - el.x; targetH = targetW / ratio; }
         }
       }      
-      let targetR = el.x + targetW;
-      let targetB = el.y + targetH;
-
       if (el.type !== 'image') {
         let orig_h = originalEls[idx].h;
         originalEls[idx].h = targetH; 
@@ -501,13 +510,11 @@ function startResize(e, idx, corner = 'se') {
       // Free scale moving backwards out (Top-Left scale)
       let dx = (ev.clientX - sX) / workspaceZoom;
       let dy = (ev.clientY - sY) / workspaceZoom;
-      let minH = 40;
-      if (el.type === 'title') minH = 64;
-      if (el.type === 'subtitle') minH = 50;
-      if (el.type === 'body') minH = 44;
+      let minH = (el.type === 'title' || el.type === 'subtitle' || el.type === 'body') ? getTextMinH(el, idx) : 40;
       if (el.type === 'jupyter') minH = MIN_JUPYTER_H;
+      if (el.type === 'jupyter-input' || el.type === 'jupyter-output') minH = MIN_JUPYTER_H / 2;
 
-      let minW = el.type === 'jupyter' ? MIN_JUPYTER_W : 80;
+      let minW = el.type === 'jupyter' ? MIN_JUPYTER_W : (el.type.startsWith('jupyter') ? MIN_JUPYTER_W / 2 : 80);
       let targetW = Math.max(minW, sW - dx);
       let targetH = Math.max(minH, sH - dy);
       

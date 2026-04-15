@@ -97,3 +97,17 @@ function rgbaToHex(r) {
   if(!m)return r; 
   return'#'+[m[1],m[2],m[3]].map(x=>parseInt(x).toString(16).padStart(2,'0')).join(''); 
 }
+
+const PKG_IMPORT_MAP = {
+  'opencv-python': 'cv2',
+  'scikit-learn': 'sklearn',
+  'Pillow': 'PIL',
+  'beautifulsoup4': 'bs4',
+  'scikit-image': 'skimage'
+};
+
+function getImportName(pkgName) {
+  return PKG_IMPORT_MAP[pkgName] || pkgName;
+}
+
+var customColorHistory = [];

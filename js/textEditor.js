@@ -7,7 +7,7 @@ function mkTextToolbar(idx) {
     <button class="tt-btn" onmousedown="event.preventDefault();xCmd('underline')" title="Underline" style="text-decoration:underline">U</button>
     <div class="tt-sep"></div>
     <div style="display:inline-block; position:relative; z-index:1000;">
-      <button class="tt-btn font-size-btn" id="fsBtn_${idx}" onmousedown="event.preventDefault(); toggleFontSizeDropdown(${idx})" title="Font size" style="width:50px; font-size:12px; font-family:'DM Sans',sans-serif">24 ▾</button>
+      <button class="tt-btn font-size-btn" id="fsBtn_${idx}" onmousedown="event.preventDefault(); toggleFontSizeDropdown(${idx})" title="Font size" style="width:50px; font-size:12px; font-family:'DM Sans',sans-serif">${(() => { const el = slides[currentSlideIdx] && slides[currentSlideIdx].elements[idx]; const def = el && el.type === 'title' ? 36 : el && el.type === 'subtitle' ? 20 : 16; return (el && el.fontSize) || def; })()} ▾</button>
       <div class="fs-dropdown" id="fsDropdown_${idx}">
         ${[10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 64].map(s=> `<div class="fs-opt" onmousedown="event.preventDefault(); applyCustomFontSize('${s}', ${idx})">${s}</div>`).join('')}
         <div class="fs-opt" onmousedown="event.preventDefault(); applyCustomFontSize('custom', ${idx})">Custom...</div>
@@ -36,16 +36,10 @@ function updateDynamicTextProperties(idx) {
     let node = s.anchorNode;
     if (node && node.nodeType === 3) node = node.parentNode;
     if (node) {
-      const computedStyle = window.getComputedStyle(node);
-      const fSize = computedStyle.fontSize;
-      if (fSize) {
-        const btn = document.getElementById(`fsBtn_${idx}`);
-        if (btn) btn.innerHTML = parseInt(fSize) + " ▾";
-      }
-      const fColor = computedStyle.color;
+      const fColor = window.getComputedStyle(node).color;
       if (fColor) {
         const tb = document.getElementById(`ttb_${idx}`);
-        if(tb) {
+        if (tb) {
           const cBtn = tb.querySelector('.palette-trigger-btn');
           if (cBtn) {
             const hex = rgbaToHex(fColor);
@@ -94,45 +88,26 @@ function applyCustomFontSize(size, btnIdx) {
     size = prompt("Enter font size in px (e.g., 42):", "24");
     if (!size || isNaN(parseInt(size))) return;
   }
-  if (btnIdx !== undefined) {
-    const btn = document.getElementById(`fsBtn_${btnIdx}`);
-    if (btn) btn.innerHTML = parseInt(size) + " ▾";
-  }
+  size = parseInt(size);
+
   document.querySelectorAll('.fs-dropdown.show').forEach(d => d.classList.remove('show'));
-  
-  restoreTextSelection();
-  const s = document.getSelection();
-  let ce = null;
-  if(typeof selectedElIdx !== 'undefined' && selectedElIdx !== -1) {
-      ce = document.querySelector(`[data-el-idx="${selectedElIdx}"] .text-element-content`);
+
+  // Update element data and the content element's base font size
+  const elIdx = (btnIdx !== undefined) ? btnIdx : selectedElIdx;
+  if (typeof elIdx !== 'undefined' && elIdx !== -1 && slides[currentSlideIdx]) {
+    const el = slides[currentSlideIdx].elements[elIdx];
+    if (el) el.fontSize = size;
   }
 
-  if (s.rangeCount > 0 && !s.isCollapsed) {
-    document.execCommand("fontSize", false, "7");
-    if (ce) {
-      const fonts = ce.getElementsByTagName("font");
-      for (let i = 0; i < fonts.length; i++) {
-        if (fonts[i].getAttribute("size") == "7" || fonts[i].size == "7") {
-          fonts[i].removeAttribute("size");
-          fonts[i].style.fontSize = size + "px";
-          fonts[i].style.lineHeight = "normal";
-        }
-      }
-    }
-  } else {
-    // If nothing selected, just insert a span and place caret inside
-    const span = document.createElement("span");
-    span.style.fontSize = size + "px";
-    span.style.lineHeight = "normal";
-    span.innerHTML = "&#8203;"; // zero-width space
-    const range = s.getRangeAt(0);
-    range.insertNode(span);
-    range.selectNodeContents(span);
-    range.collapse(false);
-    s.removeAllRanges();
-    s.addRange(range);
-  }
-  
+  const ce = (elIdx !== undefined && elIdx !== -1)
+    ? document.querySelector(`[data-el-idx="${elIdx}"] .text-element-content`)
+    : null;
+  if (ce) ce.style.fontSize = size + 'px';
+
+  // Update the button label
+  const btn = document.getElementById(`fsBtn_${elIdx}`);
+  if (btn) btn.innerHTML = size + ' ▾';
+
   if (ce) ce.dispatchEvent(new Event('input', { bubbles: true }));
   updateTbState();
 }
