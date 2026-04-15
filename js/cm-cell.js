@@ -5,50 +5,60 @@ if (typeof CM === 'undefined') {
     console.warn("CM (CodeMirror Global) not found. CM6 features will be disabled.");
 }
 
-const fontSizeCompartment = new CM.Compartment();
-const themeCompartment = new CM.Compartment();
-
 /**
- * Initializes a CM6 editor in the given container
- * @param {HTMLElement} container 
- * @param {Object} el Element data from slides[i].elements[j]
- * @param {String} cmId Key for codeMirrors object
+ * Initializes a CM6 editor in the given container.
+ * Each editor gets its own Compartment instances so reconfiguration
+ * doesn't collide between editors.
+ *
+ * @param {HTMLElement} container
+ * @param {Object} el  Element data from slides[i].elements[j]
+ * @param {String} cmId  Key for the global codeMirrors registry
  */
 function initCM6(container, el, cmId) {
     const isLight = isLightColor(slides[currentSlideIdx].bg);
     const theme = isLight ? CM.atomone : CM.oneDark;
-    
+
     const startSize = el.fontSize || 13;
+
+    // Per-editor compartments — each editor must own its own instances
+    const myFontCompartment  = new CM.Compartment();
+    const myThemeCompartment = new CM.Compartment();
 
     const state = CM.EditorState.create({
         doc: el.code || "",
         extensions: [
             CM.basicSetup,
             CM.python(),
-            themeCompartment.of(theme),
-            fontSizeCompartment.of(CM.EditorView.theme({
+            myThemeCompartment.of(theme),
+            myFontCompartment.of(CM.EditorView.theme({
                 "&": { fontSize: startSize + "px" },
                 ".cm-scroller": { overflow: "auto", maxHeight: "100%" },
-                ".cm-content": { fontFamily: "'JetBrains Mono', monospace" }
+                ".cm-content": { fontFamily: "'JetBrains Mono', monospace" },
+                ".cm-gutters":  { fontFamily: "'JetBrains Mono', monospace" }
             })),
             CM.EditorView.lineWrapping,
-            CM.keymap.of([
-                CM.indentWithTab,
-                {
-                    key: "Mod-=",
-                    run: (view) => {
-                        updateElementFontSize(view, cmId, 1);
-                        return true;
+            CM.keymap.of([CM.indentWithTab]),
+
+            // Intercept Ctrl+= / Ctrl+- at the DOM level so the browser's
+            // native zoom never fires and our font-size logic always wins.
+            CM.EditorView.domEventHandlers({
+                keydown(event, view) {
+                    if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey) {
+                        if (event.key === '=' || event.key === '+') {
+                            event.preventDefault();
+                            _cmFontDelta(view, cmId, 1);
+                            return true;
+                        }
+                        if (event.key === '-') {
+                            event.preventDefault();
+                            _cmFontDelta(view, cmId, -1);
+                            return true;
+                        }
                     }
-                },
-                {
-                    key: "Mod--",
-                    run: (view) => {
-                        updateElementFontSize(view, cmId, -1);
-                        return true;
-                    }
+                    return false;
                 }
-            ]),
+            }),
+
             CM.EditorView.updateListener.of((update) => {
                 if (update.docChanged) {
                     el.code = update.state.doc.toString();
@@ -57,53 +67,57 @@ function initCM6(container, el, cmId) {
         ]
     });
 
-    const view = new CM.EditorView({
-        state,
-        parent: container
-    });
-    
+    const view = new CM.EditorView({ state, parent: container });
+
+    // Store per-editor metadata for later reconfiguration
+    view._pyslide = {
+        fontCompartment:  myFontCompartment,
+        themeCompartment: myThemeCompartment,
+        cmId
+    };
+
     codeMirrors[cmId] = view;
     return view;
 }
 
-/**
- * Updates the font size of a specific editor and persists it to element data
- */
-function updateElementFontSize(view, cmId, delta) {
+/* ── Font scaling ──────────────────────────────────────────────── */
+
+function _cmFontDelta(view, cmId, delta) {
     const parts = cmId.split('_');
-    const sIdx = parseInt(parts[1]);
+    const sIdx  = parseInt(parts[1]);
     const elIdx = parseInt(parts[2]);
-    
     if (isNaN(sIdx) || isNaN(elIdx)) return;
-    
-    const el = slides[sIdx].elements[elIdx];
+
+    const el = slides[sIdx] && slides[sIdx].elements[elIdx];
     if (!el) return;
 
-    el.fontSize = (el.fontSize || 13) + delta;
-    el.fontSize = Math.max(6, Math.min(120, el.fontSize));
+    el.fontSize = Math.max(6, Math.min(120, (el.fontSize || 13) + delta));
+
+    const comp = view._pyslide && view._pyslide.fontCompartment;
+    if (!comp) return;
 
     view.dispatch({
-        effects: fontSizeCompartment.reconfigure(CM.EditorView.theme({
-            "&": { fontSize: el.fontSize + "px" }
+        effects: comp.reconfigure(CM.EditorView.theme({
+            "&": { fontSize: el.fontSize + "px" },
+            ".cm-scroller": { overflow: "auto", maxHeight: "100%" },
+            ".cm-content": { fontFamily: "'JetBrains Mono', monospace" },
+            ".cm-gutters":  { fontFamily: "'JetBrains Mono', monospace" }
         }))
     });
-    
+
     toast(`Font Size: ${el.fontSize}px`);
 }
 
-/**
- * Refreshes the theme of all active editors based on current background
- */
+/* ── Theme refresh (call when slide background changes) ────────── */
+
 function refreshCMThemes() {
     const isLight = isLightColor(slides[currentSlideIdx].bg);
     const theme = isLight ? CM.atomone : CM.oneDark;
-    
+
     for (const cmId in codeMirrors) {
         const view = codeMirrors[cmId];
-        if (view && view.dispatch) {
-            view.dispatch({
-                effects: themeCompartment.reconfigure(theme)
-            });
-        }
+        if (!view || !view._pyslide) continue;
+        const comp = view._pyslide.themeCompartment;
+        view.dispatch({ effects: comp.reconfigure(theme) });
     }
 }
