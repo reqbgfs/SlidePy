@@ -418,6 +418,8 @@ function renderSlide() {
       if (el.type === 'title' || el.type === 'subtitle' || el.type === 'body') renderTextEl(w, el, idx, isLight);
       else if (el.type === 'image') renderImageEl(w, el, idx);
       else if (el.type === 'jupyter') renderJupyterEl(w, el, idx);
+      else if (el.type === 'jupyter-input') renderJupyterInputEl(w, el, idx);
+      else if (el.type === 'jupyter-output') renderJupyterOutputEl(w, el, idx);
       
       if (isNew) canvas.appendChild(w);
     }
@@ -740,14 +742,17 @@ async function uploadFromPicker() {
 
 function renderJupyterEl(w, el, idx) {
   const cmId = `cm_${currentSlideIdx}_${idx}`;
-  const cell = document.createElement('div'); cell.className = 'jupyter-cell';
+  const cell = document.createElement('div'); cell.className = 'jupyter-cell cm6-bundled';
   const ratio = el.codeRatio || 0.6;
   
   cell.innerHTML = `
     <div class="cell-code-side" style="flex: ${ratio}">
       <div class="cell-code-header">
         <span class="cell-code-label"><span class="py-dot"></span>Python</span>
-        <button class="run-btn" id="runBtn_${idx}" onclick="event.stopPropagation();runCell(${idx})">▶ Run</button>
+        <div class="cell-controls">
+          <button class="run-btn" id="runBtn_${idx}" onclick="event.stopPropagation();runCell(${idx})">▶ Run</button>
+          <button class="cell-action-btn" onclick="event.stopPropagation();separateCell(${idx})" title="Separate Input/Output">◩ Separate</button>
+        </div>
       </div>
       <div class="cell-code-editor" id="editor_${cmId}"></div>
     </div>
@@ -764,25 +769,131 @@ function renderJupyterEl(w, el, idx) {
   `;
   w.appendChild(cell);
 
-  // Ratio resize interaction (Editor only)
   if (!document.body.classList.contains('presenting')) {
     const divider = cell.querySelector('.cell-divider');
-    divider.addEventListener('mousedown', (e) => {
-      e.stopPropagation();
-      startCellRatioResize(e, idx);
-    });
+    divider.addEventListener('mousedown', (e) => { e.stopPropagation(); startCellRatioResize(e, idx); });
   }
 
   requestAnimationFrame(() => {
-    const ee = document.getElementById(`editor_${cmId}`); if (!ee) return;
-    const cm = CodeMirror(ee, {
-      value: el.code || '', mode: 'python', theme: 'dracula', lineNumbers: true, indentUnit: 4, tabSize: 4, indentWithTabs: false, lineWrapping: true,
-      gutters: ["CodeMirror-lint-markers"],
-      lint: { getAnnotations: window.pythonLinter, async: true },
-      extraKeys: { 'Shift-Enter': () => runCell(idx), 'Tab': (cm) => cm.replaceSelection('    ') }
-    });
-    codeMirrors[cmId] = cm; setTimeout(() => cm.refresh(), 50);
+    const ee = document.getElementById(`editor_${cmId}`);
+    if (!ee) return;
+    initCM6(ee, el, cmId);
   });
+}
+
+function renderJupyterInputEl(w, el, idx) {
+  const cmId = `cm_${currentSlideIdx}_${idx}`;
+  const cell = document.createElement('div'); cell.className = 'jupyter-cell jupyter-sep-input';
+  cell.innerHTML = `
+    <div class="cell-code-side" style="flex:1">
+      <div class="cell-code-header">
+        <span class="cell-code-label"><span class="py-dot"></span>Input</span>
+        <div class="cell-controls">
+          <button class="run-btn" id="runBtn_${idx}" onclick="event.stopPropagation();runCell(${idx})">▶ Run</button>
+          <button class="cell-action-btn" onclick="event.stopPropagation();mergeCell(${idx})" title="Merge with Output">◪ Merge</button>
+        </div>
+      </div>
+      <div class="cell-code-editor" id="editor_${cmId}"></div>
+    </div>
+  `;
+  w.appendChild(cell);
+  requestAnimationFrame(() => {
+    const ee = document.getElementById(`editor_${cmId}`);
+    if (ee) initCM6(ee, el, cmId);
+  });
+}
+
+function renderJupyterOutputEl(w, el, idx) {
+  const cell = document.createElement('div'); cell.className = 'jupyter-cell jupyter-sep-output';
+  cell.innerHTML = `
+    <div class="cell-output-side" style="flex:1">
+      <div class="cell-output-header">
+        <span class="cell-output-label">⬡ Output</span>
+        <div class="cell-controls">
+          <button class="clear-output-btn" onclick="event.stopPropagation();clearOutput(${idx})">✕ Clear</button>
+          <button class="cell-action-btn" onclick="event.stopPropagation();mergeCell(${idx})" title="Merge with Input">◪ Merge</button>
+        </div>
+      </div>
+      <div class="cell-output-content" id="output_${idx}">
+        ${el.output || '<span style="color:var(--text-muted)">Results...</span>'}
+      </div>
+    </div>
+  `;
+  w.appendChild(cell);
+}
+
+function separateCell(i) {
+  saveUndo();
+  const els = slides[currentSlideIdx].elements;
+  const el = els[i];
+  const linkId = genId();
+  
+  const ratio = el.codeRatio || 0.6;
+  const gap = 20;
+  
+  const inputEl = {
+    ...JSON.parse(JSON.stringify(el)),
+    type: 'jupyter-input',
+    w: el.w * ratio,
+    linkId
+  };
+  
+  const outputEl = {
+    ...JSON.parse(JSON.stringify(el)),
+    type: 'jupyter-output',
+    x: el.x + el.w * ratio + gap,
+    w: el.w * (1 - ratio),
+    linkId
+  };
+
+  els.splice(i, 1, inputEl, outputEl);
+  selectedElIdx = i;
+  renderSlide();
+}
+
+function mergeCell(i) {
+  saveUndo();
+  const els = slides[currentSlideIdx].elements;
+  const el = els[i];
+  const linkId = el.linkId;
+  if (!linkId) return;
+
+  const partnerIdx = els.findIndex((e, idx) => idx !== i && e.linkId === linkId);
+  if (partnerIdx === -1) {
+    // Just convert back to jupyter
+    el.type = 'jupyter';
+    delete el.linkId;
+  } else {
+    const p = els[partnerIdx];
+    const input = el.type === 'jupyter-input' ? el : p;
+    const output = el.type === 'jupyter-output' ? el : p;
+    
+    // Bounds: encompass both
+    const x = Math.min(input.x, output.x);
+    const y = Math.min(input.y, output.y);
+    const r = Math.max(input.x + input.w, output.x + output.w);
+    const b = Math.max(input.y + input.h, output.y + output.h);
+    
+    const newEl = {
+      ...input,
+      type: 'jupyter',
+      x, y, w: r - x, h: b - y,
+      codeRatio: input.w / (r - x),
+      output: output.output
+    };
+    delete newEl.linkId;
+
+    if (i < partnerIdx) {
+      els.splice(partnerIdx, 1);
+      els.splice(i, 1, newEl);
+    } else {
+      els.splice(i, 1);
+      els.splice(partnerIdx, 1, newEl);
+    }
+  }
+  
+  selectedElIdx = -1;
+  renderSlide();
 }
 
 function startCellRatioResize(e, idx) {
@@ -825,7 +936,7 @@ function startCellRatioResize(e, idx) {
     
     // Refresh CodeMirror to fit new width
     const cmId = `cm_${currentSlideIdx}_${idx}`;
-    if (codeMirrors[cmId]) codeMirrors[cmId].refresh();
+    // CM6 automatically handles layout changes
   };
   
   const onUp = () => {
@@ -1325,7 +1436,12 @@ function applyPaletteColor(hex) {
 function showCtxMenu(e, i) { ctxSlideIdx = i; const m = document.getElementById('ctxMenu'); m.style.top = e.clientY + 'px'; m.style.left = e.clientX + 'px'; m.classList.add('show'); setTimeout(() => document.addEventListener('click', hideCtx, { once: true }), 10); }
 function hideCtx() { document.getElementById('ctxMenu').classList.remove('show'); }
 function ctxAction(a) { hideCtx(); if (a === 'duplicate') duplicateSlide(ctxSlideIdx); else if (a === 'hide') toggleHidden(ctxSlideIdx); else if (a === 'delete') deleteSlide(ctxSlideIdx); else if (a === 'moveUp') moveSlide(ctxSlideIdx, -1); else if (a === 'moveDown') moveSlide(ctxSlideIdx, 1); }
-function changeBg(v) { saveUndo(); slides[currentSlideIdx].bg = v; renderSlide(); }
+function changeBg(v) { 
+  saveUndo(); 
+  slides[currentSlideIdx].bg = v; 
+  renderSlide();
+  if (typeof refreshCMThemes === 'function') refreshCMThemes();
+}
 
 // ═══════ SHARE ═══════
 function openShareModal() { const id = btoa(JSON.stringify({ t: document.getElementById('presTitle').value, ts: Date.now() })).slice(0, 16); document.getElementById('shareLink').value = `https://slidepy.app/collab/${id}?mode=view`; document.getElementById('shareModal').classList.add('show'); }

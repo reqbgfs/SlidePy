@@ -398,8 +398,8 @@ function startResize(e, idx, corner = 'se') {
       if (el.type === 'subtitle') minH = 50;
       if (el.type === 'body') minH = 44;
 
-      let targetW = Math.max(el.type === 'jupyter' ? MIN_JUPYTER_W : 80, rawW);
-      let targetH = Math.max(el.type === 'jupyter' ? MIN_JUPYTER_H : minH, rawH);
+      let targetW = Math.max(el.type.startsWith('jupyter') ? MIN_JUPYTER_W / 2 : 80, rawW);
+      let targetH = Math.max(el.type.startsWith('jupyter') ? MIN_JUPYTER_H / 2 : minH, rawH);
 
       if (el.type !== 'image') {
         targetW = Math.min(CANVAS_W - el.x, targetW);
@@ -609,7 +609,10 @@ function startResize(e, idx, corner = 'se') {
     }
 
     const cmId = `cm_${currentSlideIdx}_${idx}`; 
-    if (codeMirrors[cmId]) codeMirrors[cmId].refresh();
+    if (codeMirrors[cmId]) {
+        // CM6 doesn't need refresh() like CM5, but its container might need checking
+        // if we were using a custom layout.
+    }
   };
   
   const onUp = () => { 

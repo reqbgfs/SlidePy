@@ -62,7 +62,10 @@ function redo() {
 function persistAll() {
   const slide = slides[currentSlideIdx]; if(!slide) return;
   slide.elements.forEach((el, i) => {
-    if (el.type==='jupyter') { const cm=codeMirrors[`cm_${currentSlideIdx}_${i}`]; if(cm) el.code=cm.getValue(); }
+    if (el.type==='jupyter' || el.type==='jupyter-input') { 
+        const view=codeMirrors[`cm_${currentSlideIdx}_${i}`]; 
+        if(view && view.state) el.code=view.state.doc.toString(); 
+    }
     const ce = document.querySelector(`[data-el-idx="${i}"] .text-element-content`);
     if (ce && (el.type==='title'||el.type==='subtitle'||el.type==='body')) el.content = ce.innerHTML;
   });

@@ -223,7 +223,10 @@ if os.path.dirname(site_pkg) not in sys.path:
 async function runCell(i) {
   if(!pyReady){toast('Python loading...');return;}
   const el=slides[currentSlideIdx].elements[i];
-  const cm=codeMirrors[`cm_${currentSlideIdx}_${i}`]; if(cm) el.code=cm.getValue();
+  const view = codeMirrors[`cm_${currentSlideIdx}_${i}`]; 
+  if (view && view.state) {
+      el.code = view.state.doc.toString();
+  }
   const btn=document.getElementById(`runBtn_${i}`), out=document.getElementById(`output_${i}`);
   btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Running';
   out.innerHTML='<span style="color:var(--text-muted)">Executing...</span>';
