@@ -256,6 +256,8 @@ function renderSidebar() {
     let preview = '';
     const te = s.elements.find(e => e.type === 'title');
     if (te) preview = te.content.replace(/<[^>]+>/g, ''); else if (hasPy) preview = '🐍 Python Slide'; else preview = 'Blank Slide';
+    const slideAnimIcons = { snap: '●', fade: '◌', blur: '◉', slideL: '←', slideR: '→', slideU: '↑', slideD: '↓' };
+    const curSlideAnim = s.anim || 'snap';
     t.innerHTML = `
       <span class="slide-thumb-num">${i + 1}</span>
       <div class="slide-thumb-preview">${escHtml(preview)}</div>
@@ -264,6 +266,7 @@ function renderSidebar() {
         ${s.hidden ? '<span class="badge badge-hidden">H</span>' : ''}
       </div>
       <div class="slide-thumb-actions">
+        <button class="layer-anim-toggle" onclick="event.stopPropagation();updateSlideAnim(${i})" title="Slide transition: ${curSlideAnim}">${slideAnimIcons[curSlideAnim] || '◌'}</button>
         <button class="slide-action-btn" title="Move Up" onclick="event.stopPropagation();moveSlide(${i},-1)" ${i === 0 ? 'disabled' : ''}>▲</button>
         <button class="slide-action-btn" title="Move Down" onclick="event.stopPropagation();moveSlide(${i},1)" ${i === slides.length - 1 ? 'disabled' : ''}>▼</button>
         <button class="slide-ctx-menu-btn" title="Options" onclick="event.stopPropagation();showCtxMenu(event,${i})">⋯</button>
@@ -344,14 +347,14 @@ function renderSlide() {
         const isEntryPhase = presentStep < range.start;
 
         // Resolve entry and exit anims
-        let entryAnim = 'fade', exitAnim = 'fade';
+        let entryAnim = 'snap', exitAnim = 'snap';
         if (slide.layerAnim && slide.layerAnim[lvl]) {
           const animData = slide.layerAnim[lvl];
           if (typeof animData === 'string') {
             entryAnim = exitAnim = animData;
           } else {
-            entryAnim = animData.entry || 'fade';
-            exitAnim = animData.exit || 'fade';
+            entryAnim = animData.entry || 'snap';
+            exitAnim = animData.exit || 'snap';
           }
         }
         // Phase-specific anim: entry phase uses entryAnim, exit phase uses exitAnim.
@@ -1267,9 +1270,9 @@ function renderLayerList() {
     const upDisabled = i <= 1;
     const downDisabled = i === layers.length - 1;
     const timing = (slide.layerTiming && slide.layerTiming[lvl]) || '0-';
-    const animObj = (slide.layerAnim && slide.layerAnim[lvl]) || { entry: 'fade', exit: 'fade' };
-    const entryAnim = (typeof animObj === 'string') ? animObj : (animObj.entry || 'fade');
-    const exitAnim = (typeof animObj === 'string') ? animObj : (animObj.exit || 'fade');
+    const animObj = (slide.layerAnim && slide.layerAnim[lvl]) || { entry: 'snap', exit: 'snap' };
+    const entryAnim = (typeof animObj === 'string') ? animObj : (animObj.entry || 'snap');
+    const exitAnim = (typeof animObj === 'string') ? animObj : (animObj.exit || 'snap');
     const animIcons = { 'fade': '◌', 'snap': '●', 'blur': '◉', 'slideL': '←', 'slideR': '→', 'slideU': '↑', 'slideD': '↓' };
 
     item.innerHTML = `
@@ -1309,7 +1312,7 @@ function renderLayerList() {
 function updateLayerAnim(lvl, phase) {
   const slide = slides[currentSlideIdx];
   if (!slide.layerAnim) slide.layerAnim = {};
-  if (!slide.layerAnim[lvl]) slide.layerAnim[lvl] = { entry: 'fade', exit: 'fade' };
+  if (!slide.layerAnim[lvl]) slide.layerAnim[lvl] = { entry: 'snap', exit: 'snap' };
 
   // Migration for legacy data
   if (typeof slide.layerAnim[lvl] === 'string') {
@@ -1317,8 +1320,8 @@ function updateLayerAnim(lvl, phase) {
     slide.layerAnim[lvl] = { entry: prev, exit: prev };
   }
 
-  const current = slide.layerAnim[lvl][phase] || 'fade';
-  const order = ['fade', 'slideL', 'slideR', 'slideU', 'slideD', 'snap', 'blur'];
+  const current = slide.layerAnim[lvl][phase] || 'snap';
+  const order = ['snap', 'fade', 'blur', 'slideL', 'slideR', 'slideU', 'slideD'];
   const next = order[(order.indexOf(current) + 1) % order.length];
   slide.layerAnim[lvl][phase] = next;
   renderLayerList();
@@ -1743,6 +1746,27 @@ function getMaxSteps(slide) {
   return max;
 }
 
+const SLIDE_ANIM_ORDER = ['snap', 'fade', 'blur', 'slideL', 'slideR', 'slideU', 'slideD'];
+
+function updateSlideAnim(i) {
+  saveUndo();
+  const s = slides[i];
+  const cur = s.anim || 'snap';
+  s.anim = SLIDE_ANIM_ORDER[(SLIDE_ANIM_ORDER.indexOf(cur) + 1) % SLIDE_ANIM_ORDER.length];
+  renderSidebar();
+}
+
+function applySlideTransition(anim) {
+  if (!anim || anim === 'snap') return;
+  const canvas = document.getElementById('slideCanvas');
+  SLIDE_ANIM_ORDER.filter(a => a !== 'snap').forEach(a => canvas.classList.remove('st-' + a));
+  void canvas.offsetWidth; // force reflow so animation restarts
+  canvas.classList.add('st-' + anim);
+  canvas.addEventListener('animationend', () => {
+    SLIDE_ANIM_ORDER.filter(a => a !== 'snap').forEach(a => canvas.classList.remove('st-' + a));
+  }, { once: true });
+}
+
 function presentNext() {
   const slide = slides[presentIdx];
   const max = getMaxSteps(slide);
@@ -1755,6 +1779,7 @@ function presentNext() {
   let n = presentIdx + 1;
   while (n < slides.length && slides[n].hidden) n++;
   if (n >= slides.length) return;
+  applySlideTransition(slides[n].anim || 'snap');
   presentIdx = n;
   currentSlideIdx = presentIdx;
   presentStep = 0;
@@ -1772,6 +1797,7 @@ function presentPrev() {
   let p = presentIdx - 1;
   while (p >= 0 && slides[p].hidden) p--;
   if (p < 0) return;
+  applySlideTransition(slides[p].anim || 'snap');
   presentIdx = p;
   currentSlideIdx = presentIdx;
   presentStep = getMaxSteps(slides[presentIdx]);
