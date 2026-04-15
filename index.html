@@ -212,13 +212,26 @@
         <div class="et-sep"></div>
         <div class="et-group">
           <select class="et-select" id="bgSelect" onchange="changeBg(this.value)">
-            <option value="#1c1c26">Dark (default)</option>
-            <option value="#0e0e12">Pitch Black</option>
-            <option value="#1a1a2e">Deep Navy</option>
-            <option value="#1e1e2e">Catppuccin</option>
-            <option value="#fafaf9">Light</option>
-            <option value="#fffbeb">Warm White</option>
-            <option value="#0f172a">Slate</option>
+            <optgroup label="Light">
+              <option value="#ffffff">White</option>
+              <option value="#f4f4f5">Zinc</option>
+              <option value="linear-gradient(135deg,#f5f7fa 0%,#c3cfe2 100%)">Cloud</option>
+              <option value="linear-gradient(135deg,#ffecd2 0%,#fcb69f 100%)">Sunset</option>
+              <option value="linear-gradient(135deg,#a8edea 0%,#fed6e3 100%)">Aurora</option>
+              <option value="#fffbeb">Warm White</option>
+              <option value="linear-gradient(135deg,#d4fc79 0%,#96e6a1 100%)">Meadow</option>
+            </optgroup>
+            <optgroup label="Dark">
+              <option value="#1c1c26">Void</option>
+              <option value="#0f172a">Deep Slate</option>
+              <option value="linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%)">Night Ocean</option>
+              <option value="linear-gradient(135deg,#0f0c29 0%,#302b63 50%,#24243e 100%)">Cosmos</option>
+              <option value="linear-gradient(135deg,#0d1117 0%,#161b22 40%,#1f2937 100%)">Dev Dark</option>
+              <option value="radial-gradient(ellipse at 20% 50%,#1a237e 0%,#0d0d1a 70%)">Nebula</option>
+              <option value="linear-gradient(160deg,#1a1a2e 0%,#2d1b69 100%)">Violet Night</option>
+              <option value="linear-gradient(135deg,#1a0533 0%,#0d0a1e 60%,#0a1628 100%)">Deep Space</option>
+            </optgroup>
+            <option value="custom">Custom…</option>
           </select>
         </div>
 
@@ -528,6 +541,40 @@
       <div class="modal-footer">
         <button class="btn-secondary" id="confirmCancelBtn" onclick="closeConfirm(false)">Cancel</button>
         <button class="btn-primary" id="confirmOkBtn" onclick="closeConfirm(true)">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Custom Background Modal -->
+  <div id="bgCustomModal" class="bg-custom-overlay">
+    <div class="bg-custom-popup">
+      <div class="bg-custom-header">
+        <span>Custom Background</span>
+        <button onclick="closeBgCustomModal()">✕</button>
+      </div>
+      <div class="bg-custom-body">
+        <div class="bg-custom-col">
+          <div class="bg-custom-label">Color</div>
+          <canvas id="bgSvCanvas" width="224" height="148" class="bg-picker-sv"></canvas>
+          <canvas id="bgHueCanvas" width="224" height="18" class="bg-picker-hue"></canvas>
+          <div class="bg-color-row">
+            <div id="bgColorSwatch"></div>
+            <input id="bgHexInput" type="text" maxlength="7" placeholder="#ffffff" spellcheck="false">
+          </div>
+        </div>
+        <div class="bg-custom-col">
+          <div class="bg-custom-label">Background Image</div>
+          <div id="bgImgPreviewBox" class="bg-img-preview-box"><span>No image</span></div>
+          <div class="bg-img-btns">
+            <label class="bg-img-upload-label">Upload<input type="file" id="bgImgFileInput" accept="image/*" style="display:none"></label>
+            <button onclick="clearBgImage()">Clear</button>
+          </div>
+          <div class="bg-custom-hint">The image is placed on the slide and can be repositioned and resized — it may extend beyond the slide borders.</div>
+        </div>
+      </div>
+      <div class="bg-custom-footer">
+        <button onclick="closeBgCustomModal()">Cancel</button>
+        <button class="bg-custom-apply" onclick="applyBgCustom()">Apply</button>
       </div>
     </div>
   </div>

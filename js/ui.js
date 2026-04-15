@@ -1,7 +1,18 @@
 // ═══════ SLIDES ═══════
 function addSlide(type) {
   saveUndo();
-  const s = { id: genId(), type, elements: [], bg: '#1c1c26', hidden: false, layers: [0, 1], hiddenLayers: [] };
+  const prevSlide = slides[slides.length - 1];
+  const inheritedBg = prevSlide ? {
+    bg: prevSlide.bg,
+    bgCustomColor: prevSlide.bgCustomColor,
+    bgImage: prevSlide.bgImage,
+    bgImageX: prevSlide.bgImageX,
+    bgImageY: prevSlide.bgImageY,
+    bgImageW: prevSlide.bgImageW,
+    bgImageH: prevSlide.bgImageH,
+  } : { bg: '#ffffff' };
+  Object.keys(inheritedBg).forEach(k => inheritedBg[k] === undefined && delete inheritedBg[k]);
+  const s = { id: genId(), type, elements: [], ...inheritedBg, hidden: false, layers: [0, 1], hiddenLayers: [] };
   if (type === 'title') {
     s.elements = [
       { type: 'title', content: 'Click to add title', x: 40, y: 140, w: 440, h: 90, borderColor: '', bgColor: '', borderWidth: 0, _bgHex: '#22222e', _bgAlpha: 0, level: 1 },
@@ -23,8 +34,8 @@ function moveSlide(i, d) { const n = i + d; if (n < 0 || n >= slides.length) ret
 const elDefaults = { borderColor: '', bgColor: '', borderWidth: 0, _bgHex: '#22222e', _bgAlpha: 0, level: 1 };
 async function addElement(type, props = {}, initialContent = null) {
   const spawnLevel = (props.level !== undefined) ? props.level : selectedLayer;
-  if (spawnLevel === 0 && type !== 'image') {
-    await showAlert("Background Layer", "Only images can be placed on the background layer. Please select a different layer first.");
+  if (spawnLevel === 0) {
+    await showAlert("Background Layer", "The background layer is reserved for the background image. Please select a different layer first.");
     return;
   }
 
@@ -286,9 +297,13 @@ function renderSlide() {
   const wasPresenting = canvas.dataset.wasPresenting === 'true';
 
   // Apply background and sync UI
-  canvas.style.background = slide.bg;
+  const bgCss = slide.bg === 'custom' ? (slide.bgCustomColor || '#ffffff') : (slide.bg || '#ffffff');
+  canvas.style.background = bgCss;
   const bgSelect = document.getElementById('bgSelect');
-  if (bgSelect) bgSelect.value = slide.bg;
+  if (bgSelect) {
+    const _opts = Array.from(bgSelect.options).map(o => o.value);
+    bgSelect.value = _opts.includes(slide.bg) ? slide.bg : 'custom';
+  }
 
   let canvasCleared = false;
   if (canvas.dataset.activeSlideId !== slide.id) {
@@ -309,7 +324,7 @@ function renderSlide() {
     b.style.cssText = 'position:absolute;top:12px;right:12px;background:rgba(248,113,113,0.15);color:var(--red);font-size:11px;font-weight:700;padding:3px 10px;border-radius:4px;z-index:200;';
     b.textContent = 'HIDDEN SLIDE'; canvas.appendChild(b);
   }
-  const isLight = isLightColor(slide.bg);
+  const isLight = bgIsLight(slide.bg === 'custom' ? (slide.bgCustomColor || '#ffffff') : (slide.bg || '#ffffff'));
 
   const isEnteringPresent = isPresenting && !wasPresenting;
   const isSlideSwitchPresent = isPresenting && canvasCleared;
@@ -502,6 +517,15 @@ function renderSlide() {
       if (hiddenLevels.some(h => parseInt(h) === lvl)) existingW.remove();
     }
   });
+
+  // Bg image overlay: create/remove as needed
+  const bgClip = canvas.querySelector('#bgImgClip');
+  if (slide.bg === 'custom' && slide.bgImage) {
+    if (!bgClip) renderBgImageOverlay(canvas, slide);
+    refreshBgImageOverlay();
+  } else if (bgClip) {
+    bgClip.remove();
+  }
 }
 
 function renderTextEl(w, el, idx, isLight) {
@@ -1381,6 +1405,7 @@ function selectLayer(lvl) {
   selectedLayer = parseInt(lvl);
   renderLayerList();
   renderSlide();
+  refreshBgImageOverlay();
 }
 
 async function deleteLayer(lvl) {
@@ -1662,6 +1687,7 @@ function showCtxMenu(e, i) { ctxSlideIdx = i; const m = document.getElementById(
 function hideCtx() { document.getElementById('ctxMenu').classList.remove('show'); }
 function ctxAction(a) { hideCtx(); if (a === 'duplicate') duplicateSlide(ctxSlideIdx); else if (a === 'hide') toggleHidden(ctxSlideIdx); else if (a === 'delete') deleteSlide(ctxSlideIdx); else if (a === 'moveUp') moveSlide(ctxSlideIdx, -1); else if (a === 'moveDown') moveSlide(ctxSlideIdx, 1); }
 function changeBg(v) {
+  if (v === 'custom') { openBgCustomModal(); return; }
   saveUndo();
   slides[currentSlideIdx].bg = v;
   renderSlide();
@@ -2054,3 +2080,280 @@ function updateWorkspaceBounds() {
 
 // Ensure centering on resize
 window.addEventListener('resize', centerSlide);
+
+// ═══════ BACKGROUND HELPERS ═══════
+function bgIsLight(bg) {
+  if (!bg) return false;
+  if (/^#[0-9a-fA-F]{6}$/.test(bg)) return isLightColor(bg);
+  const hexes = [...bg.matchAll(/#[0-9a-fA-F]{6}/g)].map(m => m[0]);
+  return hexes.length > 0 && hexes.every(h => isLightColor(h));
+}
+
+// ═══════ BG IMAGE OVERLAY ═══════
+function renderBgImageOverlay(canvas, slide) {
+  // Clip wrapper matches slide bounds; overflow toggled by refreshBgImageOverlay
+  const clip = document.createElement('div');
+  clip.id = 'bgImgClip';
+  clip.style.cssText = 'position:absolute;inset:0;z-index:1;overflow:hidden;pointer-events:none;';
+
+  const ov = document.createElement('div');
+  ov.id = 'bgImgOverlay';
+  ov.className = 'bg-img-overlay';
+  ov.style.left   = (slide.bgImageX ?? 0) + 'px';
+  ov.style.top    = (slide.bgImageY ?? 0) + 'px';
+  ov.style.width  = (slide.bgImageW || 960) + 'px';
+  ov.style.height = (slide.bgImageH || 540) + 'px';
+
+  const img = document.createElement('img');
+  img.src = slide.bgImage; img.draggable = false;
+  ov.appendChild(img);
+
+  // Always create handles; visibility/pointer-events controlled by refreshBgImageOverlay
+  for (const dir of ['nw', 'ne', 'sw', 'se']) {
+    const h = document.createElement('div');
+    h.className = `bg-img-handle ${dir}`;
+    h.addEventListener('mousedown', e => { e.stopPropagation(); e.preventDefault(); _startBgResize(e, dir, slide); });
+    ov.appendChild(h);
+  }
+  ov.addEventListener('mousedown', e => {
+    if (e.target.classList.contains('bg-img-handle')) return;
+    e.stopPropagation(); _startBgDrag(e, slide);
+  });
+
+  clip.appendChild(ov);
+  canvas.insertBefore(clip, canvas.firstChild);
+}
+
+function refreshBgImageOverlay() {
+  const clip = document.getElementById('bgImgClip'); if (!clip) return;
+  const isEditing = !document.body.classList.contains('presenting') && parseInt(selectedLayer) === 0;
+  clip.style.overflow      = isEditing ? 'visible' : 'hidden';
+  clip.style.pointerEvents = isEditing ? 'auto'    : 'none';
+  const ov = document.getElementById('bgImgOverlay');
+  if (ov) ov.style.cursor = isEditing ? 'move' : 'default';
+  clip.querySelectorAll('.bg-img-handle').forEach(h => h.style.display = isEditing ? '' : 'none');
+}
+
+function _startBgDrag(e, slide) {
+  if (parseInt(selectedLayer) !== 0) return;
+  saveUndo();
+  const ov = document.getElementById('bgImgOverlay'); if (!ov) return;
+  const sx = e.clientX, sy = e.clientY;
+  const ox = slide.bgImageX ?? 0, oy = slide.bgImageY ?? 0;
+  ov.style.cursor = 'grabbing';
+  const onMove = ev => {
+    const z = workspaceZoom || 1;
+    slide.bgImageX = ox + (ev.clientX - sx) / z;
+    slide.bgImageY = oy + (ev.clientY - sy) / z;
+    ov.style.left = slide.bgImageX + 'px';
+    ov.style.top  = slide.bgImageY + 'px';
+  };
+  const onUp = () => { ov.style.cursor = 'move'; document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+
+function _startBgResize(e, dir, slide) {
+  if (parseInt(selectedLayer) !== 0) return;
+  saveUndo();
+  const ov = document.getElementById('bgImgOverlay'); if (!ov) return;
+  const sx = e.clientX, sy = e.clientY;
+  const ox = slide.bgImageX ?? 0, oy = slide.bgImageY ?? 0;
+  const ow = slide.bgImageW || 960, oh = slide.bgImageH || 540;
+  const onMove = ev => {
+    const z = workspaceZoom || 1;
+    const dx = (ev.clientX - sx) / z, dy = (ev.clientY - sy) / z;
+    if (dir.includes('e')) slide.bgImageW = Math.max(80, ow + dx);
+    if (dir.includes('s')) slide.bgImageH = Math.max(60, oh + dy);
+    if (dir.includes('w')) { slide.bgImageX = ox + dx; slide.bgImageW = Math.max(80, ow - dx); }
+    if (dir.includes('n')) { slide.bgImageY = oy + dy; slide.bgImageH = Math.max(60, oh - dy); }
+    ov.style.left = slide.bgImageX + 'px'; ov.style.top  = slide.bgImageY + 'px';
+    ov.style.width = slide.bgImageW + 'px'; ov.style.height = slide.bgImageH + 'px';
+  };
+  const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+
+// ═══════ CUSTOM BG MODAL ═══════
+let _bgPickerH = 0, _bgPickerS = 0, _bgPickerV = 1, _bgPickerReady = false;
+let _bgTempImg = null, _bgTempImgX = 0, _bgTempImgY = 0, _bgTempImgW = 960, _bgTempImgH = 540;
+
+function _hsvToHex(h, s, v) {
+  const c=v*s, x=c*(1-Math.abs((h/60)%2-1)), m=v-c;
+  let r,g,b;
+  if(h<60){r=c;g=x;b=0;}else if(h<120){r=x;g=c;b=0;}else if(h<180){r=0;g=c;b=x;}
+  else if(h<240){r=0;g=x;b=c;}else if(h<300){r=x;g=0;b=c;}else{r=c;g=0;b=x;}
+  const t=n=>Math.round((n+m)*255).toString(16).padStart(2,'0');
+  return '#'+t(r)+t(g)+t(b);
+}
+function _hexToHsv(hex) {
+  if(!hex||hex.length<7)return[0,0,1];
+  const r=parseInt(hex.slice(1,3),16)/255,g=parseInt(hex.slice(3,5),16)/255,b=parseInt(hex.slice(5,7),16)/255;
+  const max=Math.max(r,g,b),min=Math.min(r,g,b),d=max-min;
+  const v=max,s=max?d/max:0;
+  let h=0;
+  if(d){if(max===r)h=60*(((g-b)/d)%6);else if(max===g)h=60*((b-r)/d+2);else h=60*((r-g)/d+4);}
+  return[h<0?h+360:h,s,v];
+}
+function _drawBgSv() {
+  const c=document.getElementById('bgSvCanvas');if(!c)return;
+  const ctx=c.getContext('2d'),w=c.width,h=c.height;
+  const gH=ctx.createLinearGradient(0,0,w,0);
+  gH.addColorStop(0,'#fff');gH.addColorStop(1,`hsl(${_bgPickerH},100%,50%)`);
+  ctx.fillStyle=gH;ctx.fillRect(0,0,w,h);
+  const gV=ctx.createLinearGradient(0,0,0,h);
+  gV.addColorStop(0,'rgba(0,0,0,0)');gV.addColorStop(1,'#000');
+  ctx.fillStyle=gV;ctx.fillRect(0,0,w,h);
+  const cx=_bgPickerS*w,cy=(1-_bgPickerV)*h;
+  ctx.beginPath();ctx.arc(cx,cy,7,0,Math.PI*2);ctx.strokeStyle='#fff';ctx.lineWidth=2.5;ctx.stroke();
+  ctx.beginPath();ctx.arc(cx,cy,7,0,Math.PI*2);ctx.strokeStyle='rgba(0,0,0,0.4)';ctx.lineWidth=1;ctx.stroke();
+}
+function _drawBgHue() {
+  const c=document.getElementById('bgHueCanvas');if(!c)return;
+  const ctx=c.getContext('2d'),w=c.width,h=c.height;
+  const g=ctx.createLinearGradient(0,0,w,0);
+  for(let i=0;i<=6;i++)g.addColorStop(i/6,`hsl(${i*60},100%,50%)`);
+  ctx.fillStyle=g;ctx.fillRect(0,0,w,h);
+  const cx=(_bgPickerH/360)*w;
+  ctx.fillStyle='rgba(255,255,255,0.9)';ctx.fillRect(cx-2,0,4,h);
+  ctx.strokeStyle='rgba(0,0,0,0.5)';ctx.lineWidth=1;ctx.strokeRect(cx-2,0,4,h);
+}
+function _syncBgSwatch() {
+  const hex=_hsvToHex(_bgPickerH,_bgPickerS,_bgPickerV);
+  const sw=document.getElementById('bgColorSwatch'),inp=document.getElementById('bgHexInput');
+  if(sw)sw.style.background=hex;
+  if(inp&&document.activeElement!==inp)inp.value=hex;
+}
+
+// Outer box represents ±MARGIN slide-units beyond the slide in every direction.
+// The inner rectangle (the actual slide) is centred inside it.
+const _BG_MARGIN = 180; // slide-units of extra space around the slide in the preview
+
+// Builds the interactive mini-slide preview with draggable/resizable image
+function _syncBgImgBox() {
+  const box=document.getElementById('bgImgPreviewBox');if(!box)return;
+  const bgHex=_hsvToHex(_bgPickerH,_bgPickerS,_bgPickerV);
+
+  const outerWSU = 960 + 2*_BG_MARGIN;
+  const outerHSU = 540 + 2*_BG_MARGIN;
+  const outerW   = box.offsetWidth || 300;
+  const scale    = outerW / outerWSU;
+  const outerH   = outerHSU * scale;
+
+  box.style.cssText = `position:relative;width:100%;height:${outerH}px;overflow:hidden;background:#0e0e12;border:1.5px dashed rgba(124,108,240,0.35);border-radius:6px;box-sizing:border-box;`;
+  box.innerHTML = '';
+
+  // Inner slide rectangle (represents the actual slide bounds)
+  const inner = document.createElement('div');
+  inner.style.cssText = `position:absolute;left:${_BG_MARGIN*scale}px;top:${_BG_MARGIN*scale}px;width:${960*scale}px;height:${540*scale}px;background:${bgHex};border:1.5px solid rgba(124,108,240,0.55);box-sizing:border-box;pointer-events:none;z-index:0;`;
+  box.appendChild(inner);
+
+  if(!_bgTempImg){
+    const lbl=document.createElement('span');
+    lbl.textContent='No image';
+    lbl.style.cssText='position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none;z-index:1;color:rgba(255,255,255,0.28);font-size:0.8em;';
+    box.appendChild(lbl);
+    return;
+  }
+
+  const miniOv=document.createElement('div');
+  miniOv.id='bgMiniOverlay';
+  miniOv.style.cssText=`position:absolute;left:${(_bgTempImgX+_BG_MARGIN)*scale}px;top:${(_bgTempImgY+_BG_MARGIN)*scale}px;width:${_bgTempImgW*scale}px;height:${_bgTempImgH*scale}px;cursor:move;z-index:2;box-sizing:border-box;`;
+
+  const img=document.createElement('img');
+  img.src=_bgTempImg;img.draggable=false;
+  img.style.cssText='width:100%;height:100%;object-fit:cover;display:block;pointer-events:none;user-select:none;';
+  miniOv.appendChild(img);
+
+  const hPos={nw:'top:-5px;left:-5px;cursor:nw-resize',ne:'top:-5px;right:-5px;cursor:ne-resize',sw:'bottom:-5px;left:-5px;cursor:sw-resize',se:'bottom:-5px;right:-5px;cursor:se-resize'};
+  for(const dir of['nw','ne','sw','se']){
+    const h=document.createElement('div');
+    h.style.cssText=`position:absolute;width:10px;height:10px;background:#fff;border:2px solid #7c6cf0;border-radius:2px;z-index:3;${hPos[dir]}`;
+    h.addEventListener('mousedown',e=>{e.stopPropagation();e.preventDefault();_startMiniResize(e,dir,scale);});
+    miniOv.appendChild(h);
+  }
+  miniOv.addEventListener('mousedown',e=>{if(e.target!==miniOv&&e.target!==img)return;_startMiniDrag(e,scale);});
+
+  box.appendChild(miniOv);
+}
+
+function _startMiniDrag(e,scale) {
+  e.stopPropagation();
+  const miniOv=document.getElementById('bgMiniOverlay');if(!miniOv)return;
+  const sx=e.clientX,sy=e.clientY,ox=_bgTempImgX,oy=_bgTempImgY;
+  miniOv.style.cursor='grabbing';
+  const onMove=ev=>{
+    _bgTempImgX=ox+(ev.clientX-sx)/scale;
+    _bgTempImgY=oy+(ev.clientY-sy)/scale;
+    miniOv.style.left=(_bgTempImgX+_BG_MARGIN)*scale+'px';
+    miniOv.style.top =(_bgTempImgY+_BG_MARGIN)*scale+'px';
+  };
+  const onUp=()=>{miniOv.style.cursor='move';document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);};
+  document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
+}
+function _startMiniResize(e,dir,scale) {
+  e.stopPropagation();
+  const miniOv=document.getElementById('bgMiniOverlay');if(!miniOv)return;
+  const sx=e.clientX,sy=e.clientY,ox=_bgTempImgX,oy=_bgTempImgY,ow=_bgTempImgW,oh=_bgTempImgH;
+  const onMove=ev=>{
+    const dx=(ev.clientX-sx)/scale,dy=(ev.clientY-sy)/scale;
+    if(dir.includes('e'))_bgTempImgW=Math.max(80,ow+dx);
+    if(dir.includes('s'))_bgTempImgH=Math.max(60,oh+dy);
+    if(dir.includes('w')){_bgTempImgX=ox+dx;_bgTempImgW=Math.max(80,ow-dx);}
+    if(dir.includes('n')){_bgTempImgY=oy+dy;_bgTempImgH=Math.max(60,oh-dy);}
+    miniOv.style.left  =(_bgTempImgX+_BG_MARGIN)*scale+'px';
+    miniOv.style.top   =(_bgTempImgY+_BG_MARGIN)*scale+'px';
+    miniOv.style.width =_bgTempImgW*scale+'px';
+    miniOv.style.height=_bgTempImgH*scale+'px';
+  };
+  const onUp=()=>{document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);};
+  document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
+}
+
+function openBgCustomModal() {
+  const slide=slides[currentSlideIdx];
+  [_bgPickerH,_bgPickerS,_bgPickerV]=_hexToHsv(slide.bgCustomColor||'#ffffff');
+  _bgTempImg=slide.bgImage||null;
+  _bgTempImgX=slide.bgImageX??0; _bgTempImgY=slide.bgImageY??0;
+  _bgTempImgW=slide.bgImageW||960; _bgTempImgH=slide.bgImageH||540;
+  document.getElementById('bgCustomModal').classList.add('show');
+  requestAnimationFrame(()=>{_drawBgSv();_drawBgHue();_syncBgSwatch();_syncBgImgBox();_initBgPicker();});
+}
+function closeBgCustomModal(){document.getElementById('bgCustomModal').classList.remove('show');}
+function applyBgCustom() {
+  saveUndo();
+  const slide=slides[currentSlideIdx];
+  slide.bg='custom';
+  slide.bgCustomColor=_hsvToHex(_bgPickerH,_bgPickerS,_bgPickerV);
+  slide.bgImage=_bgTempImg;
+  if(_bgTempImg){slide.bgImageX=_bgTempImgX;slide.bgImageY=_bgTempImgY;slide.bgImageW=_bgTempImgW;slide.bgImageH=_bgTempImgH;}
+  else{delete slide.bgImageX;delete slide.bgImageY;delete slide.bgImageW;delete slide.bgImageH;}
+  closeBgCustomModal();renderSlide();
+}
+function onBgImgUpload(inp) {
+  const f=inp.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=e=>{
+    _bgTempImg=e.target.result;
+    // Default: cover the full slide
+    _bgTempImgX=0;_bgTempImgY=0;_bgTempImgW=960;_bgTempImgH=540;
+    _syncBgImgBox();
+  };
+  r.readAsDataURL(f);
+}
+function clearBgImage(){_bgTempImg=null;_syncBgImgBox();const fi=document.getElementById('bgImgFileInput');if(fi)fi.value='';}
+
+function _initBgPicker() {
+  if(_bgPickerReady)return;_bgPickerReady=true;
+  const svC=document.getElementById('bgSvCanvas'),hC=document.getElementById('bgHueCanvas'),hexI=document.getElementById('bgHexInput');
+  let dSv=false,dHue=false;
+  const pickSv=e=>{const r=svC.getBoundingClientRect();_bgPickerS=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width));_bgPickerV=Math.max(0,Math.min(1,1-(e.clientY-r.top)/r.height));_drawBgSv();_syncBgSwatch();};
+  const pickHue=e=>{const r=hC.getBoundingClientRect();_bgPickerH=Math.max(0,Math.min(359.9,((e.clientX-r.left)/r.width)*360));_drawBgSv();_drawBgHue();_syncBgSwatch();};
+  svC.addEventListener('mousedown',e=>{dSv=true;pickSv(e);});
+  hC.addEventListener('mousedown',e=>{dHue=true;pickHue(e);});
+  document.addEventListener('mousemove',e=>{if(dSv)pickSv(e);if(dHue)pickHue(e);});
+  document.addEventListener('mouseup',()=>{dSv=false;dHue=false;});
+  hexI.addEventListener('input',e=>{const v=e.target.value;if(/^#[0-9a-fA-F]{6}$/.test(v)){[_bgPickerH,_bgPickerS,_bgPickerV]=_hexToHsv(v);_drawBgSv();_drawBgHue();const sw=document.getElementById('bgColorSwatch');if(sw)sw.style.background=v;}});
+  document.getElementById('bgImgFileInput').addEventListener('change',function(){onBgImgUpload(this);});
+}

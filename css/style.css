@@ -3435,3 +3435,138 @@ body.presenting .present-indicator {
   background: var(--bg-hover);
   color: var(--text-primary);
 }
+/* ═══════ BG IMAGE OVERLAY ═══════ */
+.bg-img-overlay {
+  position: absolute;
+  z-index: 1;
+  overflow: visible;
+  cursor: move;
+}
+.bg-img-overlay img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  pointer-events: none;
+  user-select: none;
+}
+.bg-img-handle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border: 2px solid var(--accent);
+  border-radius: 3px;
+  z-index: 2;
+}
+.bg-img-handle.nw { top: -6px;    left: -6px;  cursor: nw-resize; }
+.bg-img-handle.ne { top: -6px;    right: -6px; cursor: ne-resize; }
+.bg-img-handle.sw { bottom: -6px; left: -6px;  cursor: sw-resize; }
+.bg-img-handle.se { bottom: -6px; right: -6px; cursor: se-resize; }
+
+/* ═══════ CUSTOM BG MODAL ═══════ */
+.bg-custom-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 8000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+.bg-custom-overlay.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+.bg-custom-popup {
+  background: #1e2130;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.65);
+  width: min(680px, 94vw);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.bg-custom-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  font-size: 0.82em;
+  font-weight: 700;
+  color: rgba(255,255,255,0.65);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.bg-custom-header button {
+  background: none; border: none;
+  color: rgba(255,255,255,0.4); cursor: pointer;
+  font-size: 0.95em; padding: 2px 6px; border-radius: 4px;
+}
+.bg-custom-header button:hover { background: rgba(255,255,255,0.08); color: #fff; }
+.bg-custom-body { display: flex; }
+.bg-custom-col {
+  flex: 1; padding: 16px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.bg-custom-col + .bg-custom-col { border-left: 1px solid rgba(255,255,255,0.06); }
+.bg-custom-label {
+  font-size: 0.7em; font-weight: 700;
+  letter-spacing: 0.07em; text-transform: uppercase;
+  color: rgba(255,255,255,0.35); margin-bottom: 2px;
+}
+.bg-picker-sv  { border-radius: 6px; cursor: crosshair; display: block; width: 100%; }
+.bg-picker-hue { border-radius: 4px; cursor: ew-resize; display: block; width: 100%; }
+.bg-color-row  { display: flex; align-items: center; gap: 10px; }
+#bgColorSwatch {
+  width: 34px; height: 34px; border-radius: 7px; flex-shrink: 0;
+  border: 2px solid rgba(255,255,255,0.15);
+}
+#bgHexInput {
+  flex: 1; background: rgba(0,0,0,0.3);
+  border: 1px solid rgba(255,255,255,0.1); border-radius: 6px;
+  color: #e8ecf4; font-family: monospace; font-size: 0.9em;
+  padding: 5px 10px; outline: none;
+}
+#bgHexInput:focus { border-color: rgba(124,108,240,0.5); box-shadow: 0 0 0 2px rgba(124,108,240,0.12); }
+.bg-img-preview-box {
+  /* Size, overflow, background set dynamically by _syncBgImgBox */
+  width: 100%;
+  min-height: 60px;
+  box-sizing: border-box;
+}
+.bg-img-btns { display: flex; gap: 8px; }
+.bg-img-upload-label {
+  flex: 1; padding: 6px 0; text-align: center;
+  background: rgba(124,108,240,0.14); border: 1px solid rgba(124,108,240,0.35);
+  border-radius: 6px; color: #c0caff; font-size: 0.83em; font-weight: 500; cursor: pointer;
+}
+.bg-img-upload-label:hover { background: rgba(124,108,240,0.26); }
+.bg-img-btns button {
+  padding: 6px 14px; background: rgba(200,60,60,0.1); border: 1px solid rgba(200,60,60,0.3);
+  border-radius: 6px; color: rgba(240,120,120,0.85); font-size: 0.83em; cursor: pointer;
+}
+.bg-img-btns button:hover { background: rgba(200,60,60,0.2); }
+.bg-custom-hint { font-size: 0.71em; color: rgba(255,255,255,0.26); line-height: 1.5; }
+.bg-custom-footer {
+  display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+  padding: 10px 16px 12px; border-top: 1px solid rgba(255,255,255,0.07);
+  background: rgba(255,255,255,0.02);
+}
+.bg-custom-footer button {
+  padding: 6px 18px; border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.7); font-size: 0.83em; cursor: pointer;
+}
+.bg-custom-footer button:hover { background: rgba(255,255,255,0.12); }
+.bg-custom-apply {
+  background: rgba(124,108,240,0.2) !important;
+  border-color: rgba(124,108,240,0.5) !important;
+  color: #c0caff !important;
+}
+.bg-custom-apply:hover { background: rgba(124,108,240,0.35) !important; }

@@ -33,7 +33,17 @@ document.addEventListener('keydown',(e)=>{
     if(e.key==='y'){e.preventDefault();redo();}
     if(e.key==='s'){e.preventDefault();saveCurrentPresentation();}
   }
-  if((e.key==='Delete'||e.key==='Backspace')&&selectedElIdx!==-1){ const a=document.activeElement; if(a&&(a.contentEditable==='true'||a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.closest('.CodeMirror')))return; e.preventDefault(); removeElement(selectedElIdx); }
+  if(e.key==='Delete'||e.key==='Backspace'){
+    const a=document.activeElement;
+    if(a&&(a.contentEditable==='true'||a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.closest('.CodeMirror')))return;
+    // Delete background image when background layer is selected
+    if(parseInt(selectedLayer)===0){
+      const slide=slides[currentSlideIdx];
+      if(slide&&slide.bgImage){e.preventDefault();saveUndo();delete slide.bgImage;delete slide.bgImageX;delete slide.bgImageY;delete slide.bgImageW;delete slide.bgImageH;renderSlide();}
+      return;
+    }
+    if(selectedElIdx!==-1){e.preventDefault();removeElement(selectedElIdx);}
+  }
 });
 
 init();
