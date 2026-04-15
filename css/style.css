@@ -918,6 +918,15 @@ body {
   background-size: 6px 4px;
 }
 
+/* MATH RENDERING */
+.math-rendered {
+  cursor: text;
+  line-height: normal;
+}
+.math-rendered .katex {
+  font-size: 1em; /* scales with the text element's font-size */
+}
+
 /* TEXT ELEMENT */
 .text-element-box {
   width: 100%;

@@ -512,10 +512,30 @@ function renderTextEl(w, el, idx, isLight) {
   c.contentEditable = true; c.innerHTML = el.content;
   if (el.fontSize) c.style.fontSize = el.fontSize + 'px';
   if (isLight && !el.bgColor) c.style.color = '#1a1a2e';
-  c.addEventListener('focus', () => { selectEl(idx); });
-  c.addEventListener('input', () => { slides[currentSlideIdx].elements[idx].content = c.innerHTML; renderSidebar(); });
+
+  // Render any $...$ / $$...$$ in the initial content
+  renderMathInElement(c);
+
+  c.addEventListener('focus', () => {
+    unrenderMathInElement(c); // restore raw LaTeX so the user edits source
+    selectEl(idx);
+  });
+  c.addEventListener('input', () => {
+    // While editing the math is unrendered, so innerHTML is always raw LaTeX here
+    slides[currentSlideIdx].elements[idx].content = c.innerHTML;
+    renderSidebar();
+  });
   c.addEventListener('mouseup', () => setTimeout(updateTbState, 10));
-  c.addEventListener('keyup', () => setTimeout(updateTbState, 10));
+  c.addEventListener('keyup',   () => setTimeout(updateTbState, 10));
+  c.addEventListener('blur', (e) => {
+    const toToolbar = e.relatedTarget && e.relatedTarget.closest('.text-toolbar');
+    if (!toToolbar) {
+      // Persist raw LaTeX before rendering (covers focus-without-typing)
+      slides[currentSlideIdx].elements[idx].content = c.innerHTML;
+      renderMathInElement(c);
+    }
+  });
+
   box.appendChild(c); w.appendChild(box);
   applyBoxStyle(idx);
 

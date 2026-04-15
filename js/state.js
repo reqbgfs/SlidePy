@@ -67,7 +67,7 @@ function persistAll() {
         if(view && view.state) el.code=view.state.doc.toString(); 
     }
     const ce = document.querySelector(`[data-el-idx="${i}"] .text-element-content`);
-    if (ce && (el.type==='title'||el.type==='subtitle'||el.type==='body')) el.content = ce.innerHTML;
+    if (ce && (el.type==='title'||el.type==='subtitle'||el.type==='body')) el.content = getRawMathContent(ce);
   });
 }
 
