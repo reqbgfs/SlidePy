@@ -402,8 +402,14 @@ function openWizard() {
   isPackageEditMode = false;
   document.getElementById('wizardModal').style.display = 'flex';
   showWizardStep(1);
-  document.getElementById('wizardName').value = '';
-  document.getElementById('wizardName').focus();
+  const inp = document.getElementById('wizardName');
+  inp.value = '';
+  inp.style.outline = '';
+  const warn = document.getElementById('wizardNameWarn');
+  if (warn) warn.style.display = 'none';
+  const btn = document.getElementById('wizardNext1Btn');
+  if (btn) btn.disabled = true;
+  inp.focus();
   wizardSelectedPkgs = [];
 }
 
@@ -441,10 +447,35 @@ function showWizardStep(n) {
   if (step) step.classList.add('active');
 }
 
+function _wizardNameTaken(name) {
+  if (!name) return false;
+  const list = getSavedPresentations();
+  return list.some(p => (p.name || '').trim().toLowerCase() === name.toLowerCase());
+}
+
+function wizardValidateName() {
+  const inp = document.getElementById('wizardName');
+  const btn = document.getElementById('wizardNext1Btn');
+  const warn = document.getElementById('wizardNameWarn');
+  const name = inp.value.trim();
+  if (!name) {
+    inp.style.outline = '';
+    warn.style.display = 'none';
+    btn.disabled = true;
+  } else if (_wizardNameTaken(name)) {
+    inp.style.outline = '2px solid var(--red)';
+    warn.style.display = '';
+    btn.disabled = true;
+  } else {
+    inp.style.outline = '2px solid var(--accent)';
+    warn.style.display = 'none';
+    btn.disabled = false;
+  }
+}
+
 function wizardNext1() {
   const name = document.getElementById('wizardName').value.trim();
-  if (!name) { document.getElementById('wizardName').style.outline = '2px solid var(--red)'; return; }
-  document.getElementById('wizardName').style.outline = '';
+  if (!name || _wizardNameTaken(name)) return;
   showWizardStep(2);
 }
 

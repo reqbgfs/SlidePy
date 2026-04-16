@@ -62,10 +62,11 @@
       <div class="wizard-step active" id="wizardStep1">
         <h2 class="wizard-heading">New Presentation</h2>
         <p class="wizard-label">Give your presentation a name</p>
-        <input class="wizard-input" id="wizardName" type="text" placeholder="My Presentation" autocomplete="off">
+        <input class="wizard-input" id="wizardName" type="text" placeholder="My Presentation" autocomplete="off" oninput="wizardValidateName()">
+        <div id="wizardNameWarn" style="display:none; color:var(--red); font-size:12px; margin-top:4px;">A presentation with this name already exists.</div>
         <div class="wizard-actions">
           <button class="wizard-btn secondary" onclick="closeWizard()">Cancel</button>
-          <button class="wizard-btn primary" onclick="wizardNext1()">Next →</button>
+          <button class="wizard-btn primary" id="wizardNext1Btn" onclick="wizardNext1()" disabled>Next →</button>
         </div>
       </div>
       <!-- Step 2: Package Profile -->
@@ -186,7 +187,7 @@
           <li><b>Reorder:</b> Drag a slide thumbnail up or down, or right-click → Move Up / Move Down.</li>
           <li><b>Background:</b> Use the background selector in the toolbar. Choose a preset or <b>Custom…</b> to pick any colour from the colour picker. You can also upload a picture — it can be freely moved and resized, and may extend beyond the slide border.</li>
           <li><b>Inheritance:</b> New slides automatically inherit the background (colour and image) of the slide before them.</li>
-          <li><b>Animations:</b> Right-click a slide → Set Animation. Each slide can enter with a transition (Fade, Slide, Zoom, Flip). The animation plays when you advance to that slide in presentation mode.</li>
+          <li><b>Animations:</b> Click the animation button to the left of the ▲▼ arrows on each slide thumbnail to cycle through: <b>None, Fade, Blur, Slide</b>. The transition plays when you advance to that slide in presentation mode.</li>
           <li><b>Hide:</b> Right-click → Toggle Hidden. Hidden slides are skipped in presentation mode but remain in the editor.</li>
           <li><b>Delete:</b> Right-click → Delete Slide, or select and press <b>Delete</b>.</li>
         </ul>
@@ -214,7 +215,7 @@
             <li><b>Hide:</b> Uncheck the checkbox next to a layer to hide all its content. The master checkbox at the top toggles every layer at once.</li>
             <li><b>Limit:</b> Up to 20 layers per slide.</li>
             <li><b>Background layer (0):</b> The background layer cannot hold regular elements. It is reserved for the background picture only — selecting it lets you move and resize the uploaded background image.</li>
-            <li><b>Animations:</b> Each layer can have an entrance animation triggered by a step. In presentation mode, advance once to show the slide, then keep pressing the arrow key to reveal each step in order. Set a layer's animation and step number by clicking the animation icon next to the layer. Options: None, Fade, Slide, Zoom, Bounce.</li>
+            <li><b>Animations:</b> Click the animation buttons to the left of the layer name to cycle the entry and exit animation: <b>None, Fade, Blur, Slide</b>. The number in between sets the step at which the layer animates in presentation mode (advance through steps with the arrow key).</li>
           </ul>
         </div>
         <div class="layer-list" id="layerList"></div>

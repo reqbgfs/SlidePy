@@ -230,6 +230,65 @@ document.addEventListener('click', () => {
   const d = document.getElementById('textDropdown');
   if (d) d.classList.remove('show');
 });
+const _elHelpContent = {
+  text: `<h4>Text / Title / Subtitle</h4><ul>
+    <li><b>Move:</b> Drag the top edge (drag handle).</li>
+    <li><b>Resize:</b> Drag the top-left or bottom-right corner.</li>
+    <li><b>Levels:</b> Non-image boxes on the same level collide. Change level via ▲▼ in the lower action menu.</li>
+    <li><b>Formatting &amp; justification:</b> Shown in the top action menu while editing text.</li>
+    <li><b>LaTeX inline:</b> <code>$code$</code></li>
+    <li><b>LaTeX block:</b> <code>$$code$$</code></li>
+  </ul>`,
+  image: `<h4>Image</h4><ul>
+    <li><b>Move:</b> Drag the top edge (drag handle).</li>
+    <li><b>Resize:</b> Drag the top-left or bottom-right corner — aspect ratio is preserved.</li>
+    <li><b>Levels:</b> Image boxes only collide with other images. Change level via ▲▼ in the lower action menu.</li>
+    <li><b>Source:</b> Choose from already-uploaded files or pick directly from your file explorer.</li>
+    <li>The box resizes automatically to fit the image.</li>
+  </ul>`,
+  jupyter: `<h4>Code Box</h4><ul>
+    <li><b>Move:</b> Drag the top edge (drag handle).</li>
+    <li><b>Resize:</b> Drag the top-left or bottom-right corner.</li>
+    <li><b>Levels:</b> Non-image boxes on the same level collide. Change level via ▲▼ in the lower action menu.</li>
+    <li><b>Editor:</b> Write code on the left; output appears on the right automatically.</li>
+    <li><b>Undo / Redo:</b> Ctrl+Z / Ctrl+Y inside the editor.</li>
+    <li><b>Font size:</b> Ctrl+Plus / Ctrl+Minus.</li>
+    <li><b>Presentation mode:</b> Both panels remain available; you can still run code.</li>
+    <li><b>Split ratio:</b> Drag the divider between code and output.</li>
+    <li><b>Split mode:</b> Hides output until code is run.</li>
+    <li><b>Color mode:</b> Toggle in the lower action bar.</li>
+  </ul>`,
+};
+_elHelpContent.title = _elHelpContent.text;
+_elHelpContent.subtitle = _elHelpContent.text;
+_elHelpContent['jupyter-input'] = _elHelpContent.jupyter;
+
+let _elHelpPanelEl = null;
+function showElHelp(type, event) {
+  event.stopPropagation();
+  if (_elHelpPanelEl) { _elHelpPanelEl.remove(); _elHelpPanelEl = null; }
+  const content = _elHelpContent[type] || _elHelpContent.text;
+  const panel = document.createElement('div');
+  panel.className = 'el-help-panel';
+  panel.innerHTML = content;
+  document.body.appendChild(panel);
+  _elHelpPanelEl = panel;
+  const btn = event.currentTarget;
+  const rect = btn.getBoundingClientRect();
+  const pw = 320;
+  let left = rect.left - pw - 4;
+  if (left < 4) left = rect.right + 4;
+  let top = rect.bottom + 4;
+  panel.style.left = left + 'px';
+  panel.style.top = top + 'px';
+  setTimeout(() => {
+    document.addEventListener('click', function _dismiss() {
+      if (_elHelpPanelEl) { _elHelpPanelEl.remove(); _elHelpPanelEl = null; }
+      document.removeEventListener('click', _dismiss);
+    });
+  }, 0);
+}
+
 function duplicateElement(i) {
   saveUndo();
   const el = JSON.parse(JSON.stringify(slides[currentSlideIdx].elements[i]));
@@ -267,7 +326,8 @@ function renderSidebar() {
     let preview = '';
     const te = s.elements.find(e => e.type === 'title');
     if (te) preview = te.content.replace(/<[^>]+>/g, ''); else if (hasPy) preview = '🐍 Python Slide'; else preview = 'Blank Slide';
-    const slideAnimIcons = { snap: '●', fade: '◌', blur: '◉', slideL: '←', slideR: '→', slideU: '↑', slideD: '↓' };
+    const slideAnimIcons = { snap: '◌', fade: '●', blur: '◉', slideL: '←', slideR: '→', slideU: '↑', slideD: '↓' };
+    const slideAnimNames = { snap: 'None', fade: 'Fade', blur: 'Blur', slideL: 'Slide ←', slideR: 'Slide →', slideU: 'Slide ↑', slideD: 'Slide ↓' };
     const curSlideAnim = s.anim || 'snap';
     t.innerHTML = `
       <span class="slide-thumb-num">${i + 1}</span>
@@ -277,7 +337,7 @@ function renderSidebar() {
         ${s.hidden ? '<span class="badge badge-hidden">H</span>' : ''}
       </div>
       <div class="slide-thumb-actions">
-        <button class="layer-anim-toggle" onclick="event.stopPropagation();updateSlideAnim(${i})" title="Slide transition: ${curSlideAnim}">${slideAnimIcons[curSlideAnim] || '◌'}</button>
+        <button class="layer-anim-toggle" onclick="event.stopPropagation();updateSlideAnim(${i})" title="Slide transition: ${slideAnimNames[curSlideAnim] || 'None'}">${slideAnimIcons[curSlideAnim] || '◌'}</button>
         <button class="slide-action-btn" title="Move Up" onclick="event.stopPropagation();moveSlide(${i},-1)" ${i === 0 ? 'disabled' : ''}>▲</button>
         <button class="slide-action-btn" title="Move Down" onclick="event.stopPropagation();moveSlide(${i},1)" ${i === slides.length - 1 ? 'disabled' : ''}>▼</button>
         <button class="slide-ctx-menu-btn" title="Options" onclick="event.stopPropagation();showCtxMenu(event,${i})">⋯</button>
@@ -467,7 +527,7 @@ function renderSlide() {
       } else {
         if (idx === selectedElIdx) { const sb = document.createElement('div'); sb.className = 'sel-border'; w.appendChild(sb); }
 
-        w.innerHTML += `<div class="el-actions-free"><button onclick="event.stopPropagation();duplicateElement(${idx})" title="Duplicate" style="background:var(--bg-card)">📋</button><button onclick="event.stopPropagation();removeElement(${idx})" title="Remove">✕</button></div>`;
+        w.innerHTML += `<div class="el-actions-free"><button class="el-help-btn" onclick="showElHelp('${el.type}',event)" title="Help">?</button><button onclick="event.stopPropagation();duplicateElement(${idx})" title="Duplicate" style="background:var(--bg-card)">📋</button><button onclick="event.stopPropagation();removeElement(${idx})" title="Remove">✕</button></div>`;
 
         // Drag header
         const dh = document.createElement('div'); dh.className = 'drag-header';
@@ -1325,16 +1385,17 @@ function renderLayerList() {
     const animObj = (slide.layerAnim && slide.layerAnim[lvl]) || { entry: 'snap', exit: 'snap' };
     const entryAnim = (typeof animObj === 'string') ? animObj : (animObj.entry || 'snap');
     const exitAnim = (typeof animObj === 'string') ? animObj : (animObj.exit || 'snap');
-    const animIcons = { 'fade': '◌', 'snap': '●', 'blur': '◉', 'slideL': '←', 'slideR': '→', 'slideU': '↑', 'slideD': '↓' };
+    const animIcons = { snap: '◌', fade: '●', blur: '◉', slideL: '←', slideR: '→', slideU: '↑', slideD: '↓' };
+    const animNames = { snap: 'None', fade: 'Fade', blur: 'Blur', slideL: 'Slide ←', slideR: 'Slide →', slideU: 'Slide ↑', slideD: 'Slide ↓' };
 
     item.innerHTML = `
       <div class="layer-controls">
         <input type="checkbox" class="layer-checkbox" ${isChecked ? 'checked' : ''} onchange="toggleLayerVisibility(${lvl})" title="Toggle Visibility">
         <div class="layer-anim-group" style="display:flex; gap:2px; width:88px; align-items:center">
           ${!isBg ? `
-            <button class="layer-anim-toggle" onclick="updateLayerAnim(${lvl}, 'entry')" title="Entry Animation">${animIcons[entryAnim]}</button>
+            <button class="layer-anim-toggle" onclick="updateLayerAnim(${lvl}, 'entry')" title="Entry: ${animNames[entryAnim] || 'None'}">${animIcons[entryAnim]}</button>
             <input type="text" class="layer-timing-input" value="${timing}" onchange="updateLayerTiming(${lvl}, this.value)" title="Timestep">
-            <button class="layer-anim-toggle" onclick="updateLayerAnim(${lvl}, 'exit')" title="Exit Animation">${animIcons[exitAnim]}</button>
+            <button class="layer-anim-toggle" onclick="updateLayerAnim(${lvl}, 'exit')" title="Exit: ${animNames[exitAnim] || 'None'}">${animIcons[exitAnim]}</button>
           ` : ''}
         </div>
       </div>
