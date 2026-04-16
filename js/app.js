@@ -16,9 +16,7 @@ function init() {
     setTimeout(centerSlide, 10);
     initPyodide(activePackageConfig);
   } else {
-    // Show home screen
-    document.getElementById('loadingScreen').style.display = 'none';
-    document.getElementById('homeScreen').style.display = 'flex';
+    // Home screen is already visible in HTML — just populate it
     renderHomeScreen();
   }
 }

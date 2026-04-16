@@ -14,7 +14,7 @@
 
 
   <script src="codemirror/codemirror.js"></script>
-  <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js" defer></script>
 
   <script>var skip_homescreen = false;</script>
 
@@ -29,8 +29,8 @@
 
 <body>
 
-  <!-- Loading Screen -->
-  <div id="loadingScreen" class="loading-screen">
+  <!-- Loading Screen (shown only while opening a presentation) -->
+  <div id="loadingScreen" class="loading-screen" style="display:none">
     <div class="loading-content">
       <div class="loading-logo">Sp</div>
       <h1 class="loading-title">SlidePy</h1>
@@ -42,7 +42,7 @@
   </div>
 
   <!-- Home Screen -->
-  <div id="homeScreen" class="home-screen" style="display:none">
+  <div id="homeScreen" class="home-screen">
     <div class="home-header">
       <div style="display:flex; align-items:center;">
         <div class="loading-logo" style="margin:0 16px 0 0">Sp</div>
