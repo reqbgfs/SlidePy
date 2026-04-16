@@ -71,23 +71,30 @@
       <!-- Step 2: Package Profile -->
       <div class="wizard-step" id="wizardStep2">
         <h2 class="wizard-heading">Python Packages</h2>
-        <p class="wizard-label">Choose which packages to install</p>
+        <p class="wizard-label">Choose which packages to pre-load when the presentation opens</p>
         <div class="wizard-profiles">
           <button class="wizard-profile-btn" data-profile="none" onclick="wizardSelectProfile('none')">
             <div class="wizard-profile-icon">∅</div>
             <div class="wizard-profile-name">None</div>
-            <div class="wizard-profile-desc">No packages</div>
+            <div class="wizard-profile-desc">No packages — fastest startup</div>
           </button>
           <button class="wizard-profile-btn selected" data-profile="default" onclick="wizardSelectProfile('default')">
             <div class="wizard-profile-icon">⚡</div>
             <div class="wizard-profile-name">Default</div>
-            <div class="wizard-profile-desc">numpy, matplotlib</div>
+            <div class="wizard-profile-desc">numpy as np, matplotlib, matplotlib.pyplot as plt</div>
           </button>
           <button class="wizard-profile-btn" data-profile="custom" onclick="wizardSelectProfile('custom')">
             <div class="wizard-profile-icon">⚙</div>
             <div class="wizard-profile-name">Custom</div>
-            <div class="wizard-profile-desc">Choose packages</div>
+            <div class="wizard-profile-desc">Hand-pick from 190+ available packages</div>
           </button>
+        </div>
+        <div class="sync-help-panel" style="margin:14px 0 4px; font-size:12px;">
+          <ul style="padding-left:16px; margin:0; line-height:1.8">
+            <li>Packages are loaded once when the presentation is opened — the more you select, the longer the initial load.</li>
+            <li>Standard library modules (<code>math</code>, <code>os</code>, <code>json</code>, …) are always available without pre-loading.</li>
+            <li><b>You can change the package profile at any time</b> from the toolbar (⚙ Settings) without recreating the presentation.</li>
+          </ul>
         </div>
         <div class="wizard-actions">
           <button class="wizard-btn secondary" onclick="showWizardStep(1)">← Back</button>
@@ -149,8 +156,8 @@
       <button class="tb-btn" onclick="saveCurrentPresentation()">💾 Save</button>
       <button class="tb-btn" onclick="openSyncModal()">☁ Sync</button>
       <button class="tb-btn" onclick="exportJSON()">📤 Export</button>
-      <input type="file" id="loadInput" accept=".json,.pyslide" style="display:none" onchange="importJSON(event)">
-      <input type="file" id="importHomeFile" accept=".pyslide,.json" style="display:none"
+      <input type="file" id="loadInput" accept=".json,.pyslide,.zip" style="display:none" onchange="importJSON(event)">
+      <input type="file" id="importHomeFile" accept=".pyslide,.json,.zip" style="display:none"
         onchange="importPresentation(event)">
     </div>
     <div class="topbar-right">
@@ -170,7 +177,19 @@
           <button onclick="addSlide('blank')" title="Blank slide">+</button>
           <button onclick="addSlide('title')" title="Title slide">T</button>
           <button onclick="addSlide('jupyter')" title="Python slide">🐍</button>
+          <button class="help-btn" onclick="toggleSlideHelp()" title="How slides work" style="width:22px;height:22px;font-size:11px;border-radius:50%">?</button>
         </div>
+      </div>
+      <div class="sync-help-panel" id="slideHelp" style="display:none; margin:0 8px 8px; font-size:12px;">
+        <h4>Slides</h4>
+        <ul style="padding-left:16px; margin:0; line-height:1.8">
+          <li><b>Reorder:</b> Drag a slide thumbnail up or down, or right-click → Move Up / Move Down.</li>
+          <li><b>Background:</b> Use the background selector in the toolbar. Choose a preset or <b>Custom…</b> to pick any colour from the colour picker. You can also upload a picture — it can be freely moved and resized, and may extend beyond the slide border.</li>
+          <li><b>Inheritance:</b> New slides automatically inherit the background (colour and image) of the slide before them.</li>
+          <li><b>Animations:</b> Right-click a slide → Set Animation. Each slide can enter with a transition (Fade, Slide, Zoom, Flip). The animation plays when you advance to that slide in presentation mode.</li>
+          <li><b>Hide:</b> Right-click → Toggle Hidden. Hidden slides are skipped in presentation mode but remain in the editor.</li>
+          <li><b>Delete:</b> Right-click → Delete Slide, or select and press <b>Delete</b>.</li>
+        </ul>
       </div>
       <div class="slide-list" id="slideList"></div>
       <div class="layer-area">
@@ -183,7 +202,20 @@
           </div>
           <div class="sidebar-actions">
             <button onclick="addLayer()" title="Add new layer">+</button>
+            <button class="help-btn" onclick="toggleLayerHelp()" title="How layers work" style="width:22px;height:22px;font-size:11px;border-radius:50%">?</button>
           </div>
+        </div>
+        <div class="sync-help-panel" id="layerHelp" style="display:none; margin:0 8px 8px; font-size:12px;">
+          <h4>Layers</h4>
+          <ul style="padding-left:16px; margin:0; line-height:1.8">
+            <li><b>Create / Delete:</b> Press <b>+</b> to add a new layer above the current one. Select a layer and press the trash button to delete it (and all content on it).</li>
+            <li><b>Order:</b> Higher layer numbers appear in front. Drag the layer rows to reorder.</li>
+            <li><b>Select:</b> Clicking a layer selects it — all elements on that layer are highlighted in the editor.</li>
+            <li><b>Hide:</b> Uncheck the checkbox next to a layer to hide all its content. The master checkbox at the top toggles every layer at once.</li>
+            <li><b>Limit:</b> Up to 20 layers per slide.</li>
+            <li><b>Background layer (0):</b> The background layer cannot hold regular elements. It is reserved for the background picture only — selecting it lets you move and resize the uploaded background image.</li>
+            <li><b>Animations:</b> Each layer can have an entrance animation triggered by a step. In presentation mode, advance once to show the slide, then keep pressing the arrow key to reveal each step in order. Set a layer's animation and step number by clicking the animation icon next to the layer. Options: None, Fade, Slide, Zoom, Bounce.</li>
+          </ul>
         </div>
         <div class="layer-list" id="layerList"></div>
       </div>
@@ -302,10 +334,22 @@
   <div class="modal-overlay" id="uploadModal">
     <div class="modal">
       <h2>Assets & Files</h2>
-      <p>Upload images, scripts, or data files for use in your code cells.</p>
+      <div class="input-with-help" style="margin-bottom:12px">
+        <p class="modal-desc" style="margin:0; flex:1">Upload files to make them available in Python code cells.</p>
+        <button class="help-btn" onclick="toggleUploadHelp()" title="How file uploads work">?</button>
+      </div>
+      <div class="sync-help-panel" id="uploadHelp" style="display:none; margin-bottom:12px;">
+        <h4>File Uploads</h4>
+        <ul style="padding-left:18px; margin:0; line-height:1.8">
+          <li><b>Supported types:</b> Images (PNG, JPG, GIF, WebP, SVG), Videos (MP4, WebM), Scripts (.py, .js, .html, .css), Data files (.csv, .txt, .json, .xml), and ZIP archives.</li>
+          <li><b>ZIP files</b> are automatically extracted — each file inside is added individually.</li>
+          <li><b>Media boxes:</b> When you add a Media element to a slide, opening the media picker shows all uploaded images and videos so you can insert them directly.</li>
+          <li><b>In code cells:</b> Every uploaded file is written to the Python filesystem. Access any file by its name — for example <code>open('data.csv')</code> or <code>import my_module</code> (for .py files). No path prefix needed.</li>
+        </ul>
+      </div>
       <div class="upload-zone" id="uploadZone" onclick="document.getElementById('pyFileInput').click()">📁 Click or drag
         files here</div>
-      <input type="file" id="pyFileInput" accept="image/*,video/*,.py,.js,.html,.css,.csv,.txt,.json,.xml,.svg" multiple
+      <input type="file" id="pyFileInput" accept="image/*,video/*,.py,.js,.html,.css,.csv,.txt,.json,.xml,.svg,.zip" multiple
         style="display:none" onchange="handleFileUpload(event)">
       <div class="uploaded-files-list" id="uploadedFilesList"></div>
       <div class="modal-btns" style="margin-top:14px">

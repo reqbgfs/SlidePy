@@ -382,6 +382,49 @@ async function handleFileConflict(fileObj) {
   });
 }
 
+// Process a single File object: extract ZIPs, otherwise read as data/text.
+// Returns an array of {name, data, type} objects (one per file, many for ZIPs).
+async function _readFileObjects(f) {
+  const isZip = /\.zip$/i.test(f.name) || f.type === 'application/zip' || f.type === 'application/x-zip-compressed';
+  if (isZip) {
+    try {
+      const zip = await JSZip.loadAsync(f);
+      const results = [];
+      for (const [path, entry] of Object.entries(zip.files)) {
+        if (entry.dir) continue;
+        const name = path.split('/').pop(); // flatten to filename only
+        if (!name) continue;
+        const isB = _isBinaryFile({ name });
+        let data;
+        if (isB) {
+          const blob = await entry.async('blob');
+          data = await new Promise(res => { const r = new FileReader(); r.onload = e => res(e.target.result); r.readAsDataURL(blob); });
+        } else {
+          data = await entry.async('string');
+        }
+        results.push({ name, data, type: isB ? 'binary' : 'text' });
+      }
+      return results;
+    } catch(e) {
+      toast(`Failed to open ZIP: ${e.message}`);
+      return [];
+    }
+  }
+
+  const isHtml = f.type === 'text/html' || f.name.toLowerCase().endsWith('.html');
+  const isBinary = _isBinaryFile(f);
+  let data = await new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (re) => resolve(re.target.result);
+    if (isBinary || isHtml) reader.readAsDataURL(f);
+    else reader.readAsText(f);
+  });
+  if (isHtml && typeof data === 'string' && data.startsWith('data:text/html') && !data.includes('charset=utf-8')) {
+    data = data.replace('data:text/html', 'data:text/html;charset=utf-8');
+  }
+  return [{ name: f.name, data, type: isBinary ? 'binary' : 'text' }];
+}
+
 function _isBinaryFile(f) {
   // Pure text formats that Python/JS can use directly as strings
   if (/\.(py|js|jsx|ts|tsx|css|csv|txt|json|xml|md|yaml|yml)$/i.test(f.name)) return false;
@@ -397,27 +440,15 @@ function _fileCategory(name) {
 }
 
 async function handleFileUpload(e) {
-  const files = Array.from(e.target.files);
-  for (const f of files) {
-    const isHtml   = f.type === 'text/html' || f.name.toLowerCase().endsWith('.html');
-    const isBinary = _isBinaryFile(f);
-    let data = await new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (re) => resolve(re.target.result);
-      if (isBinary || isHtml) reader.readAsDataURL(f);
-      else reader.readAsText(f);
-    });
-    if (isHtml && typeof data === 'string' && data.startsWith('data:text/html') && !data.includes('charset=utf-8')) {
-      data = data.replace('data:text/html', 'data:text/html;charset=utf-8');
-    }
-
-    let fileObj = { name: f.name, data, type: isBinary ? 'binary' : 'text' };
-    fileObj = await handleFileConflict(fileObj);
-    if (fileObj) {
-      uploadedFiles[fileObj.name] = fileObj;
-      _filesDirty = true;
-      renderUploadedFiles();
-      toast(`Saved ${fileObj.name}`);
+  for (const f of Array.from(e.target.files)) {
+    for (let fileObj of await _readFileObjects(f)) {
+      fileObj = await handleFileConflict(fileObj);
+      if (fileObj) {
+        uploadedFiles[fileObj.name] = fileObj;
+        _filesDirty = true;
+        renderUploadedFiles();
+        toast(`Saved ${fileObj.name}`);
+      }
     }
   }
   e.target.value = '';
@@ -547,30 +578,15 @@ function setupDropZone() {
   z.ondrop = async (e) => {
     e.preventDefault();
     z.style.borderColor = '';
-    const files = Array.from(e.dataTransfer.files);
-    for (const f of files) {
-      const isBinary = _isBinaryFile(f);
-      const isHtml = f.type === 'text/html' || f.name.toLowerCase().endsWith('.html');
-      let data = await new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (re) => resolve(re.target.result);
-        if (isBinary || isHtml) reader.readAsDataURL(f);
-        else reader.readAsText(f);
-      });
-      if (isHtml) {
-        if (typeof data === 'string' && data.startsWith('data:text/html') && !data.includes('charset=utf-8')) {
-          data = data.replace('data:text/html', 'data:text/html;charset=utf-8');
+    for (const f of Array.from(e.dataTransfer.files)) {
+      for (let fileObj of await _readFileObjects(f)) {
+        fileObj = await handleFileConflict(fileObj);
+        if (fileObj) {
+          uploadedFiles[fileObj.name] = fileObj;
+          _filesDirty = true;
+          renderUploadedFiles();
+          toast(`Saved ${fileObj.name}`);
         }
-      }
-
-      let fileObj = { name: f.name, data, type: f.type === 'text/html' ? 'text' : (isBinary ? 'binary' : 'text') };
-      fileObj = await handleFileConflict(fileObj);
-      
-      if (fileObj) {
-        uploadedFiles[fileObj.name] = fileObj;
-        _filesDirty = true;
-        renderUploadedFiles();
-        toast(`Saved ${fileObj.name}`);
       }
     }
   };

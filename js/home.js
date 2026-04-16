@@ -663,6 +663,18 @@ function toggleSyncHelp() {
   const panel = document.getElementById('syncHelp');
   panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
 }
+function toggleSlideHelp() {
+  const panel = document.getElementById('slideHelp');
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+function toggleLayerHelp() {
+  const panel = document.getElementById('layerHelp');
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+function toggleUploadHelp() {
+  const panel = document.getElementById('uploadHelp');
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
 
 async function connectGithub() {
   const token = document.getElementById('syncToken').value.trim();
