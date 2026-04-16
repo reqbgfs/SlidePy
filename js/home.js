@@ -1,9 +1,43 @@
 // ═══════ HOME SCREEN ═══════
 const STORAGE_KEY = 'slidepy_presentations';
 const PYODIDE_PACKAGES = [
+  // Standard library (always available, no download needed)
   'math','os','sys','time','json','re','datetime','random','collections','itertools','functools',
-  'beautifulsoup4','matplotlib','matplotlib.pyplot','micropip','networkx','numpy','pandas','Pillow',
-  'scikit-learn','scipy','sympy','opencv-python'
+  'abc','ast','asyncio','base64','bisect','calendar','cmath','copy','csv','dataclasses',
+  'decimal','enum','fractions','glob','hashlib','heapq','html','http','io','logging',
+  'operator','pathlib','pickle','platform','pprint','queue','shutil','signal','sqlite3',
+  'statistics','string','struct','textwrap','traceback','typing','unittest','urllib',
+  'uuid','warnings','weakref','xml','zipfile','zlib','lzma','ssl',
+  // Third-party packages built into Pyodide 0.24.1
+  'asciitree','astropy','atomicwrites','attrs','autograd','awkward-cpp',
+  'bcrypt','beautifulsoup4','biopython','bitarray','bitstring','bleach',
+  'bokeh','boost-histogram','brotli','cachetools','cartopy','certifi','cffi',
+  'cftime','click','cligj','cloudpickle','cmyt','colorspacious','contourpy',
+  'coolprop','coverage','cramjam','cryptography','cssselect','cycler','cytoolz',
+  'decorator','demes','deprecation','docutils','exceptiongroup',
+  'fastparquet','fiona','fonttools','freesasa','fsspec','future',
+  'galpy','gensim','geopandas','gmpy2','gsw',
+  'h5py','html5lib','idna','igraph','imageio','iniconfig',
+  'jedi','jinja2','joblib','jsonschema','kiwisolver',
+  'lazy-object-proxy','lazy_loader','lightgbm','logbook','lxml',
+  'markupsafe','matplotlib','micropip','mne','more-itertools','mpmath',
+  'msgpack','msprime','multidict','munch','mypy',
+  'netcdf4','networkx','newick','nlopt','nltk','nose','numcodecs','numpy',
+  'opencv-python','optlang','orjson','packaging','pandas','parso','patsy','peewee',
+  'pillow','pillow_heif','pluggy','protobuf',
+  'pyb2d','pyclipper','pycparser','pycryptodome','pydantic','pyerfa',
+  'pygments','pyheif','pyinstrument','pynacl','pyparsing','pyproj',
+  'pyrsistent','pyshp','pytest','pytest-benchmark',
+  'python-dateutil','python-magic','python-sat','python_solvespace',
+  'pytz','pywavelets','pyxel','pyyaml',
+  'rebound','reboundx','regex','retrying','robotraconteur','ruamel.yaml',
+  'scikit-image','scikit-learn','scipy','screed','setuptools',
+  'shapely','simplejson','six','smart_open','soupsieve','sourmash',
+  'sparseqr','sqlalchemy','statsmodels','svgwrite','swiglpk','sympy',
+  'termcolor','texttable','threadpoolctl','tomli','tomli-w','toolz','tqdm',
+  'traits','tskit','typing-extensions',
+  'uncertainties','unyt','webencodings','wordcloud','wrapt',
+  'xarray','xgboost','xlrd','xyzservices','yarl','yt','zarr',
 ];
 const DEFAULT_PACKAGES = [
   { name: 'math', alias: '' },
