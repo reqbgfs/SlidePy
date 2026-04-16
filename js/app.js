@@ -46,4 +46,10 @@ document.addEventListener('keydown',(e)=>{
   }
 });
 
+window.addEventListener('beforeunload', (e) => {
+  if (typeof hasUnsavedChanges === 'function' && hasUnsavedChanges()) {
+    e.preventDefault();
+  }
+});
+
 init();

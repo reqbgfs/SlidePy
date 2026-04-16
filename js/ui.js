@@ -701,15 +701,23 @@ function renderPickerGrid(filter) {
   }
 
   files.forEach(f => {
-    const isImg = /\.(png|jpe?g|gif|webp|bmp|ico)$/i.test(f.name);
+    const isImg = /\.(png|jpe?g|gif|webp|bmp|ico|svg)$/i.test(f.name);
     const isVid = /\.(mp4|webm|ogg)$/i.test(f.name);
-    const icon = isImg ? '🖼️' : (isVid ? '🎬' : '🌐');
 
     const item = document.createElement('div');
     item.className = 'picker-item';
     item.onclick = () => selectPickerAsset(f.name);
+
+    let preview;
+    if (isImg && f.data) {
+      preview = `<img class="picker-item-thumb" src="${escHtml(f.data)}" alt="${escHtml(f.name)}">`;
+    } else {
+      const icon = isVid ? '🎬' : '🌐';
+      preview = `<div class="picker-item-icon">${icon}</div>`;
+    }
+
     item.innerHTML = `
-      <div class="picker-item-icon">${icon}</div>
+      ${preview}
       <div class="picker-item-name" title="${escHtml(f.name)}">${escHtml(f.name)}</div>
     `;
     container.appendChild(item);

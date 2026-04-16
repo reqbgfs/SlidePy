@@ -305,7 +305,7 @@
       <p>Upload images, scripts, or data files for use in your code cells.</p>
       <div class="upload-zone" id="uploadZone" onclick="document.getElementById('pyFileInput').click()">📁 Click or drag
         files here</div>
-      <input type="file" id="pyFileInput" accept=".py,.png,.jpg,.jpeg,.gif,.webp,.bmp,.ico,.csv,.txt" multiple
+      <input type="file" id="pyFileInput" accept="image/*,video/*,.py,.js,.html,.css,.csv,.txt,.json,.xml,.svg" multiple
         style="display:none" onchange="handleFileUpload(event)">
       <div class="uploaded-files-list" id="uploadedFilesList"></div>
       <div class="modal-btns" style="margin-top:14px">

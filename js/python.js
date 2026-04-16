@@ -382,27 +382,40 @@ async function handleFileConflict(fileObj) {
   });
 }
 
+function _isBinaryFile(f) {
+  // Pure text formats that Python/JS can use directly as strings
+  if (/\.(py|js|jsx|ts|tsx|css|csv|txt|json|xml|md|yaml|yml)$/i.test(f.name)) return false;
+  // HTML is read as DataURL for iframe embedding but flagged as text for Python FS writes
+  return true;
+}
+
+function _fileCategory(name) {
+  if (/\.(png|jpe?g|gif|webp|bmp|ico|svg)$/i.test(name)) return 'image';
+  if (/\.(mp4|webm|ogg|mov|avi)$/i.test(name))            return 'video';
+  if (/\.(py|js|jsx|ts|tsx|html|css)$/i.test(name))       return 'script';
+  return 'data';
+}
+
 async function handleFileUpload(e) {
   const files = Array.from(e.target.files);
   for (const f of files) {
-    const isHtml = f.type === 'text/html' || f.name.toLowerCase().endsWith('.html');
+    const isHtml   = f.type === 'text/html' || f.name.toLowerCase().endsWith('.html');
+    const isBinary = _isBinaryFile(f);
     let data = await new Promise((resolve) => {
       const reader = new FileReader();
       reader.onload = (re) => resolve(re.target.result);
       if (isBinary || isHtml) reader.readAsDataURL(f);
       else reader.readAsText(f);
     });
-    if (isHtml) {
-      if (typeof data === 'string' && data.startsWith('data:text/html') && !data.includes('charset=utf-8')) {
-        data = data.replace('data:text/html', 'data:text/html;charset=utf-8');
-      }
+    if (isHtml && typeof data === 'string' && data.startsWith('data:text/html') && !data.includes('charset=utf-8')) {
+      data = data.replace('data:text/html', 'data:text/html;charset=utf-8');
     }
 
     let fileObj = { name: f.name, data, type: isBinary ? 'binary' : 'text' };
     fileObj = await handleFileConflict(fileObj);
-    
     if (fileObj) {
       uploadedFiles[fileObj.name] = fileObj;
+      _filesDirty = true;
       renderUploadedFiles();
       toast(`Saved ${fileObj.name}`);
     }
@@ -412,28 +425,58 @@ async function handleFileUpload(e) {
 
 function renderUploadedFiles() {
   const l = document.getElementById('uploadedFilesList');
-  if(!l) return;
+  if (!l) return;
   l.innerHTML = '';
-  Object.keys(uploadedFiles).forEach(n => {
-    const f = uploadedFiles[n];
-    if (!f) return;
-    const name = f.name || n;
-    const isPy = name.endsWith('.py');
-    const isImg = /\.(png|jpe?g|gif|webp|bmp|ico)$/i.test(name);
-    const isVid = /\.(mp4|webm|ogg)$/i.test(name);
-    const icon = isPy ? '🐍' : (isImg ? '🖼️' : (isVid ? '🎬' : '📄'));
-    
-    const d = document.createElement('div');
-    d.className = 'uploaded-file-item';
-    d.innerHTML = `
-      <span>${icon} ${escHtml(name)}</span>
-      <div style="display:flex; gap:8px;">
-        <button title="Rename" onclick="initiateRename('${escHtml(name)}')">✏️</button>
-        <button title="Delete" onclick="removePyFile('${escHtml(name)}')">✕</button>
-      </div>
-    `;
-    l.appendChild(d);
-  });
+
+  const files = Object.values(uploadedFiles).filter(Boolean);
+  if (files.length === 0) {
+    l.innerHTML = '<div class="file-list-empty">No files uploaded yet.</div>';
+    return;
+  }
+
+  const catMeta = {
+    image:  { label: 'Images',  icon: '🖼️' },
+    video:  { label: 'Videos',  icon: '🎬' },
+    script: { label: 'Scripts', icon: '📜' },
+    data:   { label: 'Data',    icon: '📄' },
+  };
+  const groups = { image: [], video: [], script: [], data: [] };
+  files.forEach(f => groups[_fileCategory(f.name || '')]?.push(f));
+
+  for (const [cat, catFiles] of Object.entries(groups)) {
+    if (!catFiles.length) continue;
+
+    const hdr = document.createElement('div');
+    hdr.className = 'file-category-header';
+    hdr.textContent = `${catMeta[cat].icon} ${catMeta[cat].label}`;
+    l.appendChild(hdr);
+
+    catFiles.forEach(f => {
+      const name = f.name;
+      const safeN = escHtml(name);
+      const isStoredIdb = f.data === '[stored_in_idb]';
+
+      const d = document.createElement('div');
+      d.className = 'uploaded-file-item';
+
+      // Thumbnail for images (only when data is available)
+      let thumbHtml;
+      if (cat === 'image' && f.data && !isStoredIdb) {
+        thumbHtml = `<img class="file-thumb" src="${f.data}" alt="">`;
+      } else {
+        thumbHtml = `<span class="file-icon-badge">${catMeta[cat].icon}</span>`;
+      }
+
+      d.innerHTML = `
+        ${thumbHtml}
+        <span class="file-item-name" title="${safeN}">${safeN}</span>
+        <div class="file-item-actions">
+          <button title="Rename" onclick="initiateRename('${safeN}')">✏️</button>
+          <button title="Delete" onclick="removePyFile('${safeN}')">✕</button>
+        </div>`;
+      l.appendChild(d);
+    });
+  }
 }
 
 function initiateRename(oldName) {
@@ -491,6 +534,7 @@ function removePyFile(n) {
   } catch(e) {}
   
   delete uploadedFiles[n];
+  _filesDirty = true;
   renderUploadedFiles();
   toast(`Removed ${n}`);
 }
@@ -505,6 +549,7 @@ function setupDropZone() {
     z.style.borderColor = '';
     const files = Array.from(e.dataTransfer.files);
     for (const f of files) {
+      const isBinary = _isBinaryFile(f);
       const isHtml = f.type === 'text/html' || f.name.toLowerCase().endsWith('.html');
       let data = await new Promise((resolve) => {
         const reader = new FileReader();
@@ -523,6 +568,7 @@ function setupDropZone() {
       
       if (fileObj) {
         uploadedFiles[fileObj.name] = fileObj;
+        _filesDirty = true;
         renderUploadedFiles();
         toast(`Saved ${fileObj.name}`);
       }

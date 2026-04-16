@@ -17,6 +17,7 @@ var wizardSelectedPkgs = [];
 var activePresentationId = null; // Universal identifier for the current session
 var isPackageEditMode = false;
 var lastSavedSnapshot = null; // JSON snapshot to detect unsaved changes
+var _filesDirty = false; // set true when files are added/removed without saving
 
 function getSavedPresentations() {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch(e) { return []; }
@@ -131,6 +132,7 @@ async function loadPresentation(idx) {
   customColorHistory = payload.customColorHistory || [];
   if (typeof renderCustomHistorySwatches === 'function') renderCustomHistorySwatches();
   lastSavedSnapshot = JSON.stringify({ slides, title: meta.name || 'Untitled' });
+  _filesDirty = false;
   document.getElementById('homeScreen').classList.add('hidden');
   setTimeout(() => document.getElementById('homeScreen').style.display = 'none', 600);
   showLoadingAndInit();
@@ -183,6 +185,7 @@ async function saveCurrentPresentation() {
     else list.push(meta);
     savePresentationsList(list);
     lastSavedSnapshot = JSON.stringify({ slides, title: name });
+    _filesDirty = false;
     toast('Saved Securely (IDB)');
   } catch (e) {
     console.error("Save Operation Failed:", e);
@@ -195,9 +198,11 @@ async function saveCurrentPresentation() {
 }
 
 function hasUnsavedChanges() {
+  if (_filesDirty) return true;
+  if (lastSavedSnapshot === null) return false;
   persistAll();
   const current = JSON.stringify({ slides, title: document.getElementById('presTitle').value || 'Untitled' });
-  return lastSavedSnapshot !== null && current !== lastSavedSnapshot;
+  return current !== lastSavedSnapshot;
 }
 
 function goHome() {
@@ -221,6 +226,7 @@ function finalizeGoHome() {
   activePresentationId = null;
   activePackageConfig = null;
   lastSavedSnapshot = null;
+  _filesDirty = false;
   slides = []; uploadedFiles = {}; codeMirrors = {};
   selectedElIdx = -1; currentSlideIdx = 0;
   // Show home screen
