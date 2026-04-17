@@ -28,3 +28,7 @@ Presentation Website with interactive Python code cells (similar to Jupyter Note
 - [Pyodide](https://pyodide.org/) (Python in the browser)
 - [CodeMirror](https://codemirror.net/) (Code editor)
 - GitHub REST API for synchronization
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
