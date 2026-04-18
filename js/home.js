@@ -20,7 +20,7 @@ const PYODIDE_PACKAGES = [
   'h5py','html5lib','idna','igraph','imageio','iniconfig',
   'jedi','jinja2','joblib','jsonschema','kiwisolver',
   'lazy-object-proxy','lazy_loader','lightgbm','logbook','lxml',
-  'markupsafe','matplotlib','micropip','mne','more-itertools','mpmath',
+  'markupsafe','matplotlib','matplotlib.pyplot','micropip','mne','more-itertools','mpmath',
   'msgpack','msprime','multidict','munch','mypy',
   'netcdf4','networkx','newick','nlopt','nltk','nose','numcodecs','numpy',
   'opencv-python','optlang','orjson','packaging','pandas','parso','patsy','peewee',
@@ -311,6 +311,10 @@ async function exportPresentation(idx) {
   }
 
   zip.file("slides.json", JSON.stringify(metadata, null, 2));
+
+  // PDF export requires the editor canvas — only possible from the editor, not home screen
+  // (buildPDFBlob is intentionally not called here)
+
   const blob = await zip.generateAsync({ type: "blob" });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');

@@ -1021,7 +1021,7 @@ function renderJupyterInputEl(w, el, idx) {
 }
 
 function renderJupyterOutputEl(w, el, idx) {
-  const cell = document.createElement('div'); cell.className = 'jupyter-cell jupyter-sep-output';
+  const cell = document.createElement('div'); cell.className = `jupyter-cell jupyter-sep-output${el.cmTheme === 'light' ? ' cm-light' : ''}`;
   cell.innerHTML = `
     <div class="cell-output-side" style="flex:1">
       <div class="cell-output-header">
@@ -1964,6 +1964,129 @@ function updatePC() {
   if (indicatorEl) indicatorEl.textContent = text;
 }
 
+// ═══════ PDF EXPORT ═══════
+async function buildPDFBlob(slidesData) {
+  const { jsPDF } = window.jspdf;
+  const W = 960, H = 540;
+  const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [W, H], hotfixes: ['px_scaling'] });
+  const canvas = document.getElementById('slideCanvas');
+
+  // Save editor state
+  const savedSlideIdx = currentSlideIdx;
+  const savedStep = presentStep;
+  const savedPresenting = document.body.classList.contains('presenting');
+  const savedSelectedEl = selectedElIdx;
+
+  // Enter a clean rendering state without scale transform
+  document.body.classList.add('presenting', 'pdf-exporting');
+  canvas.style.transform = 'none';
+  canvas.style.transformOrigin = 'top left';
+  selectedElIdx = -1;
+
+  let firstPage = true;
+
+  for (let sIdx = 0; sIdx < slidesData.length; sIdx++) {
+    const slide = slidesData[sIdx];
+    if (slide.hidden) continue;
+
+    currentSlideIdx = sIdx;
+    const maxSteps = getMaxSteps(slide);
+
+    // Detect split code cells (jupyter-input elements)
+    const hasSplitCell = slide.elements && slide.elements.some(e => e.type === 'jupyter-input');
+
+    for (let step = 0; step <= maxSteps; step++) {
+      presentStep = step;
+      renderSlide();
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+      const imgCanvas = await html2canvas(canvas, {
+        scale: 1, useCORS: true, allowTaint: true,
+        width: W, height: H, x: 0, y: 0,
+        backgroundColor: null, logging: false
+      });
+
+      if (!firstPage) pdf.addPage([W, H], 'landscape');
+      pdf.addImage(imgCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, W, H);
+      firstPage = false;
+
+      // For the last step of a slide with split cells: add input-only and output-visible pages
+      if (step === maxSteps && hasSplitCell) {
+        // Page: input in foreground (output z behind — already the default render)
+        // Page: output brought to foreground
+        const outputEls = canvas.querySelectorAll('[data-el-idx]');
+        const inputIdxSet = new Set();
+        const outputIdxSet = new Set();
+        slide.elements.forEach((el, i) => {
+          if (el.type === 'jupyter-input') inputIdxSet.add(i);
+          if (el.type === 'jupyter-output') outputIdxSet.add(i);
+        });
+
+        // Temporarily boost output z-index above input
+        outputIdxSet.forEach(i => {
+          const el = canvas.querySelector(`[data-el-idx="${i}"]`);
+          if (el) { el.dataset._savedZ = el.style.zIndex; el.style.zIndex = '9999'; el.style.visibility = 'visible'; }
+        });
+        inputIdxSet.forEach(i => {
+          const el = canvas.querySelector(`[data-el-idx="${i}"]`);
+          if (el) { el.dataset._savedZ2 = el.style.zIndex; el.style.zIndex = '50'; }
+        });
+
+        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+        const imgOutput = await html2canvas(canvas, {
+          scale: 1, useCORS: true, allowTaint: true,
+          width: W, height: H, backgroundColor: null, logging: false
+        });
+        pdf.addPage([W, H], 'landscape');
+        pdf.addImage(imgOutput.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, W, H);
+
+        // Restore z-indices
+        outputIdxSet.forEach(i => {
+          const el = canvas.querySelector(`[data-el-idx="${i}"]`);
+          if (el) el.style.zIndex = el.dataset._savedZ || '';
+        });
+        inputIdxSet.forEach(i => {
+          const el = canvas.querySelector(`[data-el-idx="${i}"]`);
+          if (el) el.style.zIndex = el.dataset._savedZ2 || '';
+        });
+      }
+    }
+  }
+
+  // Restore state
+  document.body.classList.remove('pdf-exporting');
+  if (!savedPresenting) document.body.classList.remove('presenting');
+  canvas.style.transform = '';
+  canvas.style.transformOrigin = '';
+  currentSlideIdx = savedSlideIdx;
+  presentStep = savedStep;
+  selectedElIdx = savedSelectedEl;
+  renderSlide();
+  if (savedPresenting) scalePresentationSlide();
+
+  return pdf.output('blob');
+}
+
+async function exportPDF() {
+  persistAll();
+  const btn = document.getElementById('exportPdfBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Rendering…'; }
+  try {
+    const blob = await buildPDFBlob(slides);
+    const name = (document.getElementById('presTitle').value || 'Untitled').replace(/\s+/g, '_');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name + '.pdf';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast('PDF exported!');
+  } catch(e) {
+    console.error('PDF export failed:', e);
+    toast('PDF export failed — see console.');
+  }
+  if (btn) { btn.disabled = false; btn.textContent = '🖨 PDF'; }
+}
+
 // ═══════ SAVE/LOAD ═══════
 async function exportJSON() {
   persistAll();
@@ -1991,6 +2114,11 @@ async function exportJSON() {
   }
 
   zip.file("slides.json", JSON.stringify(metadata, null, 2));
+
+  try {
+    const pdfBlob = await buildPDFBlob(slides);
+    zip.file(name.replace(/\s+/g, '_') + '.pdf', pdfBlob);
+  } catch(e) { console.warn('PDF generation failed:', e); }
 
   const blob = await zip.generateAsync({ type: "blob" });
   const u = URL.createObjectURL(blob);

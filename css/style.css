@@ -1792,6 +1792,12 @@ body.presenting .cell-action-btn {
   border-left-color: #6f42c1;
 }
 
+.jupyter-cell.cm-light .jupyter-sep-output {
+  background: #fffffe;
+  color: #1f1f1f;
+  border-left-color: #107c10;
+}
+
 .cell-output-content .error {
   color: var(--red);
 }

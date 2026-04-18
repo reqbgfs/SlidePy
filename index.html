@@ -15,6 +15,8 @@
 
   <script src="codemirror/codemirror.js"></script>
   <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
   <script>var skip_homescreen = false;</script>
 
@@ -157,6 +159,7 @@
       <button class="tb-btn" onclick="saveCurrentPresentation()">💾 Save</button>
       <button class="tb-btn" onclick="openSyncModal()">☁ Sync</button>
       <button class="tb-btn" onclick="exportJSON()">📤 Export</button>
+      <button class="tb-btn" onclick="exportPDF()" id="exportPdfBtn">🖨 PDF</button>
       <input type="file" id="loadInput" accept=".json,.pyslide,.zip" style="display:none" onchange="importJSON(event)">
       <input type="file" id="importHomeFile" accept=".pyslide,.json,.zip" style="display:none"
         onchange="importPresentation(event)">
