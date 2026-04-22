@@ -355,6 +355,13 @@
         files here</div>
       <input type="file" id="pyFileInput" accept="image/*,video/*,.py,.js,.html,.css,.csv,.txt,.json,.xml,.svg,.zip" multiple
         style="display:none" onchange="handleFileUpload(event)">
+      <div class="asset-filter-bar" id="assetFilterBar">
+        <button class="asset-filter-btn active" onclick="setAssetFilter('all', this)">All</button>
+        <button class="asset-filter-btn" onclick="setAssetFilter('image', this)">Images</button>
+        <button class="asset-filter-btn" onclick="setAssetFilter('video', this)">Videos</button>
+        <button class="asset-filter-btn" onclick="setAssetFilter('script', this)">Scripts</button>
+        <button class="asset-filter-btn" onclick="setAssetFilter('other', this)">Other</button>
+      </div>
       <div class="uploaded-files-list" id="uploadedFilesList"></div>
       <div class="modal-btns" style="margin-top:14px">
         <button class="modal-btn" onclick="closeModal('uploadModal')">Close</button>

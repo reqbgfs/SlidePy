@@ -454,13 +454,22 @@ async function handleFileUpload(e) {
   e.target.value = '';
 }
 
+var _assetFilter = 'all';
+
+function setAssetFilter(filter, btn) {
+  _assetFilter = filter;
+  document.querySelectorAll('.asset-filter-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderUploadedFiles();
+}
+
 function renderUploadedFiles() {
   const l = document.getElementById('uploadedFilesList');
   if (!l) return;
   l.innerHTML = '';
 
-  const files = Object.values(uploadedFiles).filter(Boolean);
-  if (files.length === 0) {
+  const allFiles = Object.values(uploadedFiles).filter(Boolean);
+  if (allFiles.length === 0) {
     l.innerHTML = '<div class="file-list-empty">No files uploaded yet.</div>';
     return;
   }
@@ -469,8 +478,19 @@ function renderUploadedFiles() {
     image:  { label: 'Images',  icon: '🖼️' },
     video:  { label: 'Videos',  icon: '🎬' },
     script: { label: 'Scripts', icon: '📜' },
-    data:   { label: 'Data',    icon: '📄' },
+    data:   { label: 'Other',   icon: '📄' },
   };
+
+  const filterCat = _assetFilter === 'other' ? 'data' : _assetFilter;
+  const files = _assetFilter === 'all'
+    ? allFiles
+    : allFiles.filter(f => _fileCategory(f.name || '') === filterCat);
+
+  if (files.length === 0) {
+    l.innerHTML = '<div class="file-list-empty">No files in this category.</div>';
+    return;
+  }
+
   const groups = { image: [], video: [], script: [], data: [] };
   files.forEach(f => groups[_fileCategory(f.name || '')]?.push(f));
 
