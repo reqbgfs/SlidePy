@@ -517,6 +517,9 @@ function renderSlide() {
       w.style.pointerEvents = isAbove ? 'auto' : 'none';
     }
 
+    // Append new wrappers before building contents so applyBoxStyle can find them via querySelector
+    if (isNew) canvas.appendChild(w);
+
     // Only rebuild inner contents if NEW or in Editor Mode
     if (isNew || !isPresenting) {
       w.innerHTML = '';
@@ -556,8 +559,6 @@ function renderSlide() {
         else if (el.type === 'jupyter') renderJupyterEl(w, el, idx);
         else if (el.type === 'jupyter-input') renderJupyterInputEl(w, el, idx);
       }
-
-      if (isNew) canvas.appendChild(w);
     }
   });
 
