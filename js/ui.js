@@ -1922,8 +1922,8 @@ function presentPrev() {
 }
 
 function pkh(e) {
-  const cmFocused = document.activeElement &&
-    (document.activeElement.closest('.cm-editor') || document.activeElement.closest('.CodeMirror'));
+  const inCm = el => el && (el.closest('.cm-editor') || el.closest('.CodeMirror'));
+  const cmFocused = inCm(document.activeElement) || inCm(e.target);
   if (cmFocused && e.key !== 'Escape') return;
   if (e.key === 'ArrowRight' || e.key === ' ') presentNext();
   else if (e.key === 'ArrowLeft') presentPrev();
